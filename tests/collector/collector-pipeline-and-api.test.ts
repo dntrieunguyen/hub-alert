@@ -176,42 +176,39 @@ describe('Collector Pipeline & REST API End-to-End', () => {
         expect(tickResult.failed).toBe(0);
     });
 
-    it('should handle GET /feeds/latest and GET /latest as Market Intelligence without sending to Google Chat on GET', async () => {
+    it('should handle GET /feeds/latest and GET /latest as Market Intelligence with Google Chat notification', async () => {
         const repository = new InMemoryFeedRepository();
         await repository.saveItem({
-            id: 'test-item-1',
-            externalId: 'ext-1',
-            fingerprint: 'fp-1',
-            sourceId: 'source-1',
-            sourceName: 'CoinDesk',
+            id: 'item-101',
+            externalId: 'ext-101',
+            fingerprint: 'fp-101',
+            sourceId: 'jin10',
+            sourceName: 'Jin10 Global Flash',
             sourceTier: SourceTier.NEWS,
-            category: 'CRYPTO_NEWS',
+            category: 'MARKET',
             title: 'Bitcoin Surges Past $100K in Historic Rally',
-            summary: 'BTC hit a record high today amid massive institutional inflows.',
-            url: 'https://coindesk.com/btc-100k',
+            summary: 'BTC has reached six figures on massive ETF inflows.',
+            content: 'Institutional buying accelerates globally.',
+            url: 'https://example.com/101',
             publishedAt: new Date(),
             collectedAt: new Date(),
             tokens: ['BTC'],
             symbols: ['$BTC'],
             chains: ['Bitcoin'],
-            topics: ['MARKET'],
+            topics: ['PRICE'],
             entities: [],
-            credibilityScore: 90,
-            impactScore: 95,
+            credibilityScore: 85,
+            impactScore: 80,
             breaking: true,
         });
 
         const sentMessages: string[] = [];
         const mockNotificationModule: any = {
-            configService: {
-                isEnabled: () => true,
-            },
-            formatter: {
-                formatVietnamTime: (d: Date) => d.toISOString(),
-            },
+            configService: { isEnabled: () => true },
+            formatter: { formatVietnamTime: (d: Date) => d.toISOString() },
             notificationService: {
-                sendText: async (text: string) => {
-                    sentMessages.push(text);
+                sendText: async (msg: string) => {
+                    sentMessages.push(msg);
                 },
             },
         };
@@ -224,7 +221,7 @@ describe('Collector Pipeline & REST API End-to-End', () => {
             notificationModule: mockNotificationModule,
         });
 
-        // 1. Call GET /feeds/latest (returns Market Intelligence, DOES NOT auto-send to Google Chat)
+        // 1. Call GET /feeds/latest (returns Market Intelligence and auto-sends to Google Chat)
         const resLatest = await router.request('/feeds/latest');
         expect(resLatest.status).toBe(200);
         const dataLatest: any = await resLatest.json();
@@ -232,14 +229,16 @@ describe('Collector Pipeline & REST API End-to-End', () => {
         expect(dataLatest.items[0]).toHaveProperty('analysis');
         expect(dataLatest.items[0]).toHaveProperty('whyItMatters');
         expect(dataLatest).toHaveProperty('summary');
-        expect(sentMessages).toHaveLength(0); // GET MUST NOT SEND GOOGLE CHAT!
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toContain('HUB ALERT');
+        expect(dataLatest.notification).toBeDefined();
+        expect(dataLatest.notification.sent).toBe(true);
 
-        // 2. Call GET /latest (alias)
-        const resAlias = await router.request('/latest');
-        expect(resAlias.status).toBe(200);
-        const dataAlias: any = await resAlias.json();
-        expect(dataAlias.items).toHaveLength(1);
-        expect(sentMessages).toHaveLength(0); // Still 0
+        // 2. Call GET /latest with notify=false (suppresses notification)
+        sentMessages.length = 0;
+        const resNoNotify = await router.request('/latest?notify=false');
+        expect(resNoNotify.status).toBe(200);
+        expect(sentMessages).toHaveLength(0);
 
         // 3. Call GET /latest/raw (debug raw feeds)
         const resRaw = await router.request('/latest/raw');

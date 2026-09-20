@@ -129,23 +129,32 @@ export const createCollectorRouter = (dependencies: {
     /**
      * GET /feeds/latest & GET /latest
      * Returns Top N AI-analyzed Market Intelligence items in natural Vietnamese.
-     * Guaranteed NO Google Chat notification side-effect on GET.
+     * Automatically dispatches notification to Google Chat unless notify=false.
      * Query params:
      * - limit: number (default 10)
      * - raw: boolean (default false, returns raw feeds for debug)
      * - refresh: boolean (default false, forces cache invalidation)
+     * - notify: boolean (default true, automatically dispatches to Google Chat)
      */
     const handleLatestIntelligence = async (c: any) => {
         const limitStr = c.req.query('limit');
         const limit = limitStr ? Number.parseInt(limitStr, 10) : 10;
         const raw = c.req.query('raw') === 'true' || c.req.query('raw') === '1';
         const forceRefresh = c.req.query('refresh') === 'true' || c.req.query('refresh') === '1';
+        const notifyQuery = c.req.query('notify');
+        // Automatically dispatch notification to chat unless explicitly disabled via notify=false or notify=0
+        const shouldNotify = notifyQuery !== 'false' && notifyQuery !== '0';
 
         const result = await activeLatestService.getLatestIntelligence({
             limit,
             raw,
             forceRefresh,
         });
+
+        if (!raw && shouldNotify && 'items' in result) {
+            const notifStatus = await activeLatestService.sendLatestNotification(limit, result as LatestMarketIntelligenceResponse);
+            (result as LatestMarketIntelligenceResponse).notification = notifStatus;
+        }
 
         return c.json(result);
     };

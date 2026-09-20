@@ -414,8 +414,8 @@ describe('Latest Market Intelligence System', () => {
         expect(result.items[0].whyItMatters.length).toBeGreaterThan(15);
     });
 
-    // 10. GET latest does not send Google Chat
-    it('10. verifies that HTTP GET /latest NEVER dispatches Google Chat messages', async () => {
+    // 10. GET latest automatically dispatches Google Chat messages (and notify=false disables it)
+    it('10. verifies that HTTP GET /latest dispatches Google Chat messages, and notify=false suppresses it', async () => {
         const repository = new InMemoryFeedRepository();
         await repository.saveItem({
             id: 'item-no-chat-test',
@@ -455,9 +455,20 @@ describe('Latest Market Intelligence System', () => {
             notificationModule: mockNotificationModule,
         });
 
-        const res = await router.request('/latest');
+        // Calling GET /latest sends notification to chat by default
+        const res = await router.request('/latest?limit=10');
         expect(res.status).toBe(200);
-        expect(sendTextSpy).not.toHaveBeenCalled(); // MUST NOT SEND GOOGLE CHAT ON GET
+        const data: any = await res.json();
+        expect(sendTextSpy).toHaveBeenCalledTimes(1);
+        expect(sendTextSpy.mock.calls[0][0]).toContain('HUB ALERT');
+        expect(data.notification).toBeDefined();
+        expect(data.notification.sent).toBe(true);
+
+        // Calling GET /latest?notify=false suppresses notification
+        sendTextSpy.mockClear();
+        const resNoNotify = await router.request('/latest?limit=10&notify=false');
+        expect(resNoNotify.status).toBe(200);
+        expect(sendTextSpy).not.toHaveBeenCalled();
     });
 
     // 11. Candidate pool > requested limit

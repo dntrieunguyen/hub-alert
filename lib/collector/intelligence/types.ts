@@ -140,5 +140,11 @@ export interface LatestMarketIntelligenceResponse {
     generatedAt: string;
     summary: LatestMarketOverview;
     items: LatestMarketIntelligenceItem[];
+    notification?: {
+        sent: boolean;
+        message?: string;
+        error?: string;
+    };
 }
+
 

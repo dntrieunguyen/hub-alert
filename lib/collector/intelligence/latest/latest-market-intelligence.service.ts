@@ -272,9 +272,9 @@ export class LatestMarketIntelligenceService {
     }
 
     /**
-     * Explicit trigger to send formatted Latest Market Intelligence to Google Chat (POST /latest/notify)
+     * Trigger to send formatted Latest Market Intelligence to Google Chat
      */
-    async sendLatestNotification(limit = 10): Promise<{ sent: boolean; message?: string; error?: string }> {
+    async sendLatestNotification(limit = 10, precomputedData?: LatestMarketIntelligenceResponse): Promise<{ sent: boolean; message?: string; error?: string }> {
         if (!this.notificationModule) {
             return { sent: false, error: 'Notification module not configured' };
         }
@@ -283,7 +283,7 @@ export class LatestMarketIntelligenceService {
         }
 
         try {
-            const data = await this.getLatestIntelligence({ limit, forceRefresh: true });
+            const data = precomputedData ?? (await this.getLatestIntelligence({ limit, forceRefresh: true }));
             if ('raw' in data) {
                 return { sent: false, error: 'Cannot format raw feeds for notification' };
             }
@@ -356,7 +356,7 @@ export class LatestMarketIntelligenceService {
     }
 
 
-    private formatGoogleChatMessage(data: LatestMarketIntelligenceResponse): string {
+    public formatGoogleChatMessage(data: LatestMarketIntelligenceResponse): string {
         const formatter = this.notificationModule?.formatter;
         const nowVietnam = formatter ? formatter.formatVietnamTime(new Date()) : new Date().toISOString();
 
@@ -365,21 +365,29 @@ export class LatestMarketIntelligenceService {
             `🕒 Cập nhật: ${nowVietnam}`,
             `📊 Trạng thái: ${data.summary.marketState} | Điểm tác động: ${data.summary.overallImpactScore}/100`,
             '',
-            `🌐 **${data.summary.title}**:`,
+            `🌐 *${data.summary.title || 'Tổng quan thị trường'}*:`,
             `> ${data.summary.marketOverview}`,
             '',
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
         ];
 
-        data.items.forEach((item, index) => {
-            const time = formatter ? formatter.formatVietnamTime(new Date(item.publishedAt)) : '';
-            lines.push(`${index + 1}. <${item.url}|${item.title}>`);
-            lines.push(`> 📝 ${item.summary}`);
-            lines.push(`> 💡 *Phân tích*: ${item.analysis}`);
-            lines.push(`> 🎯 *Tác động*: ${item.whyItMatters}`);
-            lines.push(`🏷️ Nguồn: ${item.source.name} | Relevancy: ${item.marketRelevanceScore}/100 | Tác động: ${item.impactScore}/100${time ? ` | 🕒 ${time}` : ''}`);
-            lines.push('');
-        });
+        if (data.items.length === 0) {
+            lines.push('Hiện chưa có sự kiện thị trường nổi bật nào được ghi nhận.');
+        } else {
+            data.items.forEach((item, index) => {
+                const time = formatter ? formatter.formatVietnamTime(new Date(item.publishedAt)) : '';
+                lines.push(`${index + 1}. *<${item.url}|${item.title}>*`);
+                lines.push(`> 📝 ${item.summary}`);
+                if (item.analysis) {
+                    lines.push(`> 💡 *Phân tích*: ${item.analysis}`);
+                }
+                if (item.whyItMatters) {
+                    lines.push(`> 🎯 *Tác động*: ${item.whyItMatters}`);
+                }
+                lines.push(`🏷️ Nguồn: ${item.source.name} | Relevancy: ${item.marketRelevanceScore}/100 | Tác động: ${item.impactScore}/100${time ? ` | 🕒 ${time}` : ''}`);
+                lines.push('');
+            });
+        }
 
         lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         lines.push('Dữ liệu Market Intelligence tự động xử lý bởi Hub Alert AI.');
