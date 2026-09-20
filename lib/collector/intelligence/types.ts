@@ -11,12 +11,18 @@ export type AiNewsCategory =
 
 export interface AiNewsAnalysis {
     eventId: string;
+    includeInDigest?: boolean;
+    rejectionReason?: string;
+    isDuplicate?: boolean;
+    duplicateOf?: string | null;
     isValuable: boolean;
     isNewInformation: boolean;
     category: AiNewsCategory;
     informationValueScore: number; // 0 -> 100
     marketRelevanceScore: number; // 0 -> 100
+    marketImpactScore?: number; // 0 -> 100
     aiConfidence: number; // 0 -> 1
+    confidence?: number;
     isHotNews: boolean;
     titleVi: string;
     summaryVi: string;

@@ -35,6 +35,10 @@ export class InMemoryDigestDeliveryRepository implements IDigestDeliveryReposito
         return this.deliveries.find((d) => d.status === DigestDeliveryStatus.SUCCESS) || null;
     }
 
+    async getDeliveryForSlot(slotKey: string): Promise<DigestDeliveryRecord | null> {
+        return this.deliveries.find((d) => d.slotKey === slotKey && d.status === DigestDeliveryStatus.SUCCESS) || null;
+    }
+
     async getDeliveredFingerprints(): Promise<Set<string>> {
         return new Set(this.deliveredFingerprints);
     }

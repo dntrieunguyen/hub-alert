@@ -2,6 +2,63 @@ import { SourceTier, VerificationStatus } from '../types';
 import { type MarketEvent, MarketEventType } from '../notifications/types';
 import type { CryptoDigestRankingService } from './crypto-digest-ranking.service';
 import type { AggregatedMarketEvent, AggregatedSourceInfo, DigestConfig } from './types';
+import { isCryptoMarketRelevant, isValidTitle } from './crypto-digest-relevance.service';
+import { detectGenericFiller, isValidHttpUrl, validateVietnameseOutput } from './crypto-digest-vietnamese-validator';
+
+/**
+ * Ranks sources according to Section 20 Preferred Primary Source:
+ * Official > Government / Central Bank > Exchange/project > Reuters/Bloomberg > Crypto publication > Aggregator > Social
+ */
+export function getSourceAuthoritativenessRank(sourceName: string, tier: SourceTier): number {
+    const name = (sourceName || '').toLowerCase();
+    // 1. Government / Central Bank / Regulator
+    if (
+        name.includes('federal reserve') ||
+        name.includes('the fed') ||
+        name.includes('sec') ||
+        name.includes('cftc') ||
+        name.includes('treasury') ||
+        name.includes('white house') ||
+        name.includes('ecb')
+    ) {
+        return 80;
+    }
+    // 2. Official protocol / project source
+    if (tier === SourceTier.OFFICIAL) {
+        return 70;
+    }
+    // 3. Top Tier Exchange / Top Broker
+    if (
+        name.includes('coinbase') ||
+        name.includes('binance') ||
+        name.includes('okx') ||
+        name.includes('kraken') ||
+        name.includes('bybit') ||
+        name.includes('robinhood')
+    ) {
+        return 60;
+    }
+    // 4. Reuters / Bloomberg
+    if (name.includes('reuters') || name.includes('bloomberg')) {
+        return 50;
+    }
+    // 5. Crypto Native Media
+    if (
+        name.includes('coindesk') ||
+        name.includes('cointelegraph') ||
+        name.includes('the block') ||
+        name.includes('blockworks') ||
+        name.includes('decrypt')
+    ) {
+        return 40;
+    }
+    // 6. News / Research / Aggregator (Jin10, etc.)
+    if (tier === SourceTier.NEWS || tier === SourceTier.RESEARCH) {
+        return 30;
+    }
+    // 7. Social / Community
+    return 10;
+}
 
 export class CryptoDigestSelectionService {
     private rankingService: CryptoDigestRankingService;
@@ -11,8 +68,9 @@ export class CryptoDigestSelectionService {
     }
 
     /**
-     * Aggregates raw MarketEvents, filters candidates, applies AI analysis (if enabled),
-     * scores them with combined ranking, applies diversity controls, and returns top <= 10.
+     * Aggregates raw MarketEvents, filters candidates with hard quality gates,
+     * analyzes in batches with DeepSeek, applies replenishment if needed,
+     * enforces diversity controls, and selects the true Top 10 unique events.
      */
     async selectDigestEvents(
         events: MarketEvent[],
@@ -24,18 +82,33 @@ export class CryptoDigestSelectionService {
             return [];
         }
 
-        // Step 1: Cross-Source Deduplication & Event Aggregation
-        const aggregatedEvents = this.aggregateEvents(events);
+        // Step 1: Pre-filter input events by hard title validation & market relevance
+        const validRelevantEvents = events.filter((e) => {
+            if (!isValidTitle(e.title)) {
+                return false;
+            }
+            if (!isCryptoMarketRelevant(e)) {
+                return false;
+            }
+            return true;
+        });
 
-        // Step 2: Initial Deterministic Ranking Score Calculation
+        if (validRelevantEvents.length === 0) {
+            return [];
+        }
+
+        // Step 2: Cross-Source Deduplication & Event Aggregation (Stage A Deterministic)
+        const aggregatedEvents = this.aggregateEvents(validRelevantEvents);
+
+        // Step 3: Initial Deterministic Ranking Score Calculation
         for (const item of aggregatedEvents) {
             const breakdown = this.rankingService.calculateRankingScore(item, config.lookbackHours, config.weights);
             item.rankingBreakdown = breakdown;
             item.digestRankingScore = breakdown.totalRankingScore;
         }
 
-        // Step 3: Candidate Pre-filtering (Section 6: minimize AI token usage)
-        const candidates = aggregatedEvents.filter((item) => {
+        // Step 4: Candidate Filtering (Quality Gate: minImpactScore >= 45, minCredibility >= 70)
+        const qualifiedCandidates = aggregatedEvents.filter((item) => {
             // Check previous delivery duplicate
             if (previouslyDeliveredFingerprints.has(item.canonicalFingerprint)) {
                 return false;
@@ -51,21 +124,25 @@ export class CryptoDigestSelectionService {
                 return false;
             }
 
-            // Candidate criteria (Section 6)
+            // Strict Quality Gate: Impact Score below minimum (e.g. 15 or < 45) is NEVER allowed
+            if (item.impactScore < config.minImpactScore) {
+                return false;
+            }
+
+            // Credibility Score Gate
             const credScore = item.rankingBreakdown?.credibilityScore ?? 0;
             const satisfiesCandidateScore =
                 credScore >= config.minCredibility ||
-                item.impactScore >= 60 ||
+                item.impactScore >= 70 ||
                 item.primaryEvent.priority === 'P0' ||
                 item.primaryEvent.priority === 'P1' ||
-                item.primaryEvent.metadata?.breaking === true ||
-                (item.trendScore ?? 0) >= 80;
+                item.primaryEvent.metadata?.breaking === true;
 
             if (!satisfiesCandidateScore) {
                 return false;
             }
 
-            // Specific Memecoin Quality Rules (Section 11)
+            // Specific Memecoin Quality Rules
             if (item.category === 'MEMECOIN' || item.eventType === MarketEventType.MEME_TREND) {
                 if (!this.satisfiesMemecoinRules(item)) {
                     return false;
@@ -75,74 +152,127 @@ export class CryptoDigestSelectionService {
             return true;
         });
 
-        // Sort candidates by initial ranking score descending and cap at maxCandidates (20-30 max)
-        candidates.sort((a, b) => (b.digestRankingScore ?? 0) - (a.digestRankingScore ?? 0));
-        const aiCandidates = candidates.slice(0, config.aiMaxCandidates || 30);
+        // Sort candidates by initial ranking score descending
+        qualifiedCandidates.sort((a, b) => (b.digestRankingScore ?? 0) - (a.digestRankingScore ?? 0));
 
-        // Step 4: AI Analysis Batch (Section 17 & 18)
-        let filteredEvents = aiCandidates;
-        if (aiAnalyzer && config.aiEnabled) {
-            try {
-                const marketEventsToAnalyze = aiCandidates.map((c) => c.primaryEvent);
-                const analysesMap = await aiAnalyzer.analyzeEvents(marketEventsToAnalyze);
+        // Step 5: Candidate Replenishment Loop with AI Analysis Batching
+        const batchSize = config.candidateBatchSize || 50;
+        const maxScan = config.maxScanItems || 300;
+        let cursor = 0;
+        let analyzedCandidates: AggregatedMarketEvent[] = [];
+        let selected: AggregatedMarketEvent[] = [];
 
-                for (const item of aiCandidates) {
-                    const analysis = analysesMap.get(item.primaryEvent.id);
-                    if (analysis) {
-                        item.aiAnalysis = analysis;
+        while (cursor < qualifiedCandidates.length && cursor < maxScan) {
+            const batch = qualifiedCandidates.slice(cursor, cursor + batchSize);
+            cursor += batchSize;
+
+            if (batch.length === 0) {
+                break;
+            }
+
+            // Run AI analysis on this batch if enabled
+            if (aiAnalyzer && config.aiEnabled) {
+                try {
+                    const marketEventsToAnalyze = batch.map((c) => c.primaryEvent);
+                    const analysesMap = await aiAnalyzer.analyzeEvents(marketEventsToAnalyze);
+
+                    for (const item of batch) {
+                        const analysis = analysesMap.get(item.primaryEvent.id);
+                        if (analysis) {
+                            item.aiAnalysis = analysis;
+                        }
+                        // Recompute ranking score with AI weights (infoValue + marketRelevance)
+                        const breakdown = this.rankingService.calculateRankingScore(item, config.lookbackHours, config.weights);
+                        item.rankingBreakdown = breakdown;
+                        item.digestRankingScore = breakdown.totalRankingScore;
                     }
-                    // Recompute ranking score with AI weights (0.15 info + 0.10 relevance)
-                    const breakdown = this.rankingService.calculateRankingScore(item, config.lookbackHours, config.weights);
-                    item.rankingBreakdown = breakdown;
-                    item.digestRankingScore = breakdown.totalRankingScore;
+
+                    // Filter out AI rejected items, semantic duplicates, and generic fillers
+                    const passingBatch = batch.filter((item) => {
+                        if (item.aiAnalysis) {
+                            // Rejection / Not valuable
+                            if (item.aiAnalysis.includeInDigest === false || item.aiAnalysis.isValuable === false) {
+                                return false;
+                            }
+                            // Semantic duplicate
+                            if (item.aiAnalysis.isDuplicate || item.aiAnalysis.duplicateOfEventId) {
+                                return false;
+                            }
+                            // Information value and relevance quality gates
+                            if (item.aiAnalysis.informationValueScore < config.minInformationValue) {
+                                return false;
+                            }
+                            if (item.aiAnalysis.marketRelevanceScore < config.minMarketRelevance) {
+                                return false;
+                            }
+                            // Reject generic filler summary
+                            if (detectGenericFiller(item.aiAnalysis.summaryVi)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    });
+
+                    analyzedCandidates.push(...passingBatch);
+                } catch {
+                    // Graceful fallback to deterministic batch
+                    analyzedCandidates.push(...batch);
                 }
+            } else {
+                analyzedCandidates.push(...batch);
+            }
 
-                // Remove noise/spam identified by AI
-                filteredEvents = aiCandidates.filter((item) => {
-                    if (item.aiAnalysis) {
-                        if (item.aiAnalysis.isValuable === false) {
-                            return false;
-                        }
-                        if (item.aiAnalysis.duplicateOfEventId) {
-                            return false;
-                        }
-                    }
-                    return true;
-                });
-            } catch {
-                // If AI analysis fails, gracefully continue with deterministic candidates
-                filteredEvents = aiCandidates;
+            // Minimum ranking score gate
+            const currentQualified = analyzedCandidates.filter((item) => {
+                const rankScore = item.digestRankingScore ?? 0;
+                return rankScore >= config.minRankingScore;
+            });
+
+            // Sort by final digest ranking score descending
+            currentQualified.sort((a, b) => {
+                const scoreDiff = (b.digestRankingScore ?? 0) - (a.digestRankingScore ?? 0);
+                if (Math.abs(scoreDiff) > 0.01) {
+                    return scoreDiff;
+                }
+                const impactDiff = b.impactScore - a.impactScore;
+                if (impactDiff !== 0) {
+                    return impactDiff;
+                }
+                return b.publishedAt.getTime() - a.publishedAt.getTime();
+            });
+
+            // Apply diversity controls and test if we have achieved maxItems
+            selected = this.applyDiversityAndSelect(currentQualified, config.maxItems, config.diversity);
+
+            if (selected.length >= config.maxItems) {
+                break;
             }
         }
 
-        // Step 5: Minimum Ranking Score Gate
-        const qualifiedEvents = filteredEvents.filter((item) => {
-            const rankScore = item.digestRankingScore ?? 0;
-            return rankScore >= config.minRankingScore;
-        });
+        return selected;
+    }
 
-        // Step 6: Sort by Final Digest Ranking Score Descending (Tie-break by recency and impact)
-        qualifiedEvents.sort((a, b) => {
-            const scoreDiff = (b.digestRankingScore ?? 0) - (a.digestRankingScore ?? 0);
-            if (Math.abs(scoreDiff) > 0.01) {
-                return scoreDiff;
-            }
-            const impactDiff = b.impactScore - a.impactScore;
-            if (impactDiff !== 0) {
-                return impactDiff;
-            }
-            return b.publishedAt.getTime() - a.publishedAt.getTime();
-        });
-
-        // Step 5: Category Diversity & Quota Control (Section 8)
+    /**
+     * Applies source diversity, token diversity, and topic diversity limits
+     */
+    applyDiversityAndSelect(
+        events: AggregatedMarketEvent[],
+        maxItems: number,
+        diversity: DigestConfig['diversity']
+    ): AggregatedMarketEvent[] {
         const selected: AggregatedMarketEvent[] = [];
         const tokenCounts = new Map<string, number>();
         const sourceCounts = new Map<string, number>();
         const topicCounts = new Map<string, number>();
+        const seenFingerprints = new Set<string>();
 
-        for (const candidate of qualifiedEvents) {
-            if (selected.length >= config.maxItems) {
+        for (const candidate of events) {
+            if (selected.length >= maxItems) {
                 break;
+            }
+
+            if (seenFingerprints.has(candidate.canonicalFingerprint)) {
+                continue;
             }
 
             // Check if major breaking event warrants diversity override
@@ -152,12 +282,16 @@ export class CryptoDigestSelectionService {
                 candidate.eventType === MarketEventType.GOVERNMENT_POLICY ||
                 candidate.impactScore >= 95;
 
+            const isOfficialSource =
+                candidate.primaryEvent.source.tier === SourceTier.OFFICIAL ||
+                getSourceAuthoritativenessRank(candidate.primaryEvent.source.name, candidate.primaryEvent.source.tier) >= 70;
+
             if (!isMajorOverride) {
-                // Check Token Diversity limit
+                // Token Diversity limit (max 2 per token)
                 let tokenViolated = false;
                 for (const token of candidate.tokens) {
                     const currentCount = tokenCounts.get(token) || 0;
-                    if (currentCount >= config.diversity.maxPerToken) {
+                    if (currentCount >= diversity.maxPerToken) {
                         tokenViolated = true;
                         break;
                     }
@@ -166,18 +300,20 @@ export class CryptoDigestSelectionService {
                     continue;
                 }
 
-                // Check Source Diversity limit
-                const primarySource = candidate.sources[0]?.id || 'unknown';
-                const sourceCount = sourceCounts.get(primarySource) || 0;
-                if (sourceCount >= config.diversity.maxPerSource) {
-                    continue;
+                // Source Diversity limit (max 2 per source, e.g. Jin10 max 2 unless official primary source)
+                if (!isOfficialSource) {
+                    const primarySource = candidate.sources[0]?.id || candidate.primaryEvent.source.name || 'unknown';
+                    const sourceCount = sourceCounts.get(primarySource) || 0;
+                    if (sourceCount >= diversity.maxPerSource) {
+                        continue;
+                    }
                 }
 
-                // Check Topic Diversity limit
+                // Topic Diversity limit (max 3 per topic)
                 let topicViolated = false;
                 for (const topic of candidate.topics) {
                     const currentCount = topicCounts.get(topic) || 0;
-                    if (currentCount >= config.diversity.maxPerTopic) {
+                    if (currentCount >= diversity.maxPerTopic) {
                         topicViolated = true;
                         break;
                     }
@@ -189,24 +325,25 @@ export class CryptoDigestSelectionService {
 
             // Accept candidate
             selected.push(candidate);
+            seenFingerprints.add(candidate.canonicalFingerprint);
 
             // Update diversity tallies
             for (const token of candidate.tokens) {
                 tokenCounts.set(token, (tokenCounts.get(token) || 0) + 1);
             }
-            const primarySource = candidate.sources[0]?.id || 'unknown';
+            const primarySource = candidate.sources[0]?.id || candidate.primaryEvent.source.name || 'unknown';
             sourceCounts.set(primarySource, (sourceCounts.get(primarySource) || 0) + 1);
             for (const topic of candidate.topics) {
                 topicCounts.set(topic, (topicCounts.get(topic) || 0) + 1);
             }
         }
 
-        // Return selected Top N items (Notice: never pads with low quality items!)
         return selected;
     }
 
     /**
      * Cross-source deduplication: groups related MarketEvents into unified AggregatedMarketEvents
+     * and selects preferred primary source and canonical URL according to Section 20.
      */
     aggregateEvents(events: MarketEvent[]): AggregatedMarketEvent[] {
         const groupMap = new Map<string, MarketEvent[]>();
@@ -221,12 +358,13 @@ export class CryptoDigestSelectionService {
         const aggregated: AggregatedMarketEvent[] = [];
 
         for (const [fingerprint, group] of groupMap.entries()) {
-            // Sort group so primary event is the most authoritative (Official > News > Social, then impact)
+            // Sort group so primary event is the most authoritative (Section 20 Preferred Primary Source)
             group.sort((a, b) => {
-                const tierRank = (t: SourceTier) => (t === SourceTier.OFFICIAL ? 3 : t === SourceTier.RESEARCH || t === SourceTier.NEWS ? 2 : 1);
-                const tierDiff = tierRank(b.source.tier) - tierRank(a.source.tier);
-                if (tierDiff !== 0) {
-                    return tierDiff;
+                const rankA = getSourceAuthoritativenessRank(a.source.name, a.source.tier);
+                const rankB = getSourceAuthoritativenessRank(b.source.name, b.source.tier);
+                const rankDiff = rankB - rankA;
+                if (rankDiff !== 0) {
+                    return rankDiff;
                 }
                 return b.impactScore - a.impactScore;
             });
@@ -252,7 +390,10 @@ export class CryptoDigestSelectionService {
                         publishedAt: item.publishedAt,
                     });
 
-                    if (item.source.tier === SourceTier.OFFICIAL) {
+                    if (
+                        item.source.tier === SourceTier.OFFICIAL ||
+                        getSourceAuthoritativenessRank(item.source.name, item.source.tier) >= 70
+                    ) {
                         officialCount++;
                     } else if (item.source.tier === SourceTier.NEWS || item.source.tier === SourceTier.RESEARCH) {
                         newsCount++;
@@ -272,13 +413,19 @@ export class CryptoDigestSelectionService {
             let verificationStatus = primary.verificationStatus;
             if (officialCount > 0) {
                 verificationStatus = VerificationStatus.CONFIRMED_PRIMARY_SOURCE;
-            } else if (sources.length >= 2 && newsCount >= 1) {
+            } else if (sources.length >= 2 && (newsCount >= 1 || officialCount >= 1)) {
                 verificationStatus = VerificationStatus.CONFIRMED_MULTI_SOURCE;
             }
 
-            // Determine canonical url (Official url > original X post > trusted news)
-            const officialSource = sources.find((s) => s.tier === SourceTier.OFFICIAL);
-            const canonicalUrl = officialSource ? officialSource.url : primary.url;
+            // Determine canonical url (Section 20: Official > Gov > Exchange > News > Aggregator)
+            // Sort sources by rank to pick the most authoritative source that has a valid HTTP URL
+            const sortedSourcesForUrl = [...sources].sort((a, b) => {
+                const rankA = getSourceAuthoritativenessRank(a.name, a.tier);
+                const rankB = getSourceAuthoritativenessRank(b.name, b.tier);
+                return rankB - rankA;
+            });
+            const bestSourceWithUrl = sortedSourcesForUrl.find((s) => isValidHttpUrl(s.url));
+            const canonicalUrl = bestSourceWithUrl ? bestSourceWithUrl.url : isValidHttpUrl(primary.url) ? primary.url : '';
 
             // Maximum impact score across reports
             const maxImpact = Math.max(...group.map((g) => g.impactScore));
@@ -314,14 +461,62 @@ export class CryptoDigestSelectionService {
     }
 
     /**
-     * Computes a canonical fingerprint to group multi-source coverage of the exact same event
+     * Computes a canonical fingerprint to group multi-source coverage of the exact same event.
+     * Special handling for ETF events (Grayscale ZEC ETF split from multiple sources).
      */
     computeCanonicalFingerprint(event: MarketEvent): string {
         const eventType = event.eventType;
         const normalizedTokens = (event.tokens || []).map((t) => t.toUpperCase().trim()).sort().join('_');
+        const text = `${event.title} ${event.summary || ''}`.toLowerCase();
+
+        // 1. Detect ETF events (Section 14 & 15 ETF cluster)
+        const isEtf = eventType === MarketEventType.ETF || text.includes('etf') || text.includes('fund');
+        if (isEtf) {
+            let entity = 'general';
+            if (text.includes('grayscale')) {
+                entity = 'grayscale';
+            } else if (text.includes('blackrock')) {
+                entity = 'blackrock';
+            } else if (text.includes('bitwise')) {
+                entity = 'bitwise';
+            } else if (text.includes('fidelity')) {
+                entity = 'fidelity';
+            } else if (text.includes('vaneck')) {
+                entity = 'vaneck';
+            } else if (text.includes('21shares')) {
+                entity = '21shares';
+            } else if (text.includes('ark')) {
+                entity = 'ark';
+            }
+
+            let token = normalizedTokens;
+            if (!token) {
+                if (text.includes('zcash') || text.includes('zec')) {
+                    token = 'ZEC';
+                } else if (text.includes('bitcoin') || text.includes('btc')) {
+                    token = 'BTC';
+                } else if (text.includes('ethereum') || text.includes('eth')) {
+                    token = 'ETH';
+                } else if (text.includes('solana') || text.includes('sol')) {
+                    token = 'SOL';
+                }
+            }
+
+            let action = 'event';
+            if (text.includes('split') || text.includes('3-for-1') || text.includes('chia tách')) {
+                action = 'split';
+            } else if (text.includes('filing') || text.includes('file') || text.includes('nộp')) {
+                action = 'file';
+            } else if (text.includes('approv') || text.includes('phê duyệt')) {
+                action = 'approve';
+            } else if (text.includes('delay') || text.includes('hoãn')) {
+                action = 'delay';
+            }
+
+            return `etf_${token || entity}_${action}`.toLowerCase();
+        }
 
         // Extract key entities (exchanges, agencies)
-        const text = `${event.title} ${event.summary || ''}`.toLowerCase();
         let entity = 'general';
         if (text.includes('binance')) {
             entity = 'binance';
@@ -337,13 +532,34 @@ export class CryptoDigestSelectionService {
             entity = 'treasury';
         }
 
-        // If listing or meme event with a specific token, group by [eventType]_[entity]_[token]
-        if (normalizedTokens && (eventType === MarketEventType.EXCHANGE_LISTING || eventType === MarketEventType.BROKER_LISTING || eventType === MarketEventType.MEME_TREND)) {
+        // Listing or meme event with a specific token
+        if (
+            normalizedTokens &&
+            (eventType === MarketEventType.EXCHANGE_LISTING ||
+                eventType === MarketEventType.BROKER_LISTING ||
+                eventType === MarketEventType.MEME_TREND)
+        ) {
             return `${eventType}_${entity}_${normalizedTokens}`.toLowerCase();
         }
 
-        // Macro / Policy event
-        if (eventType === MarketEventType.CENTRAL_BANK_DECISION || eventType === MarketEventType.MACRO_DATA || eventType === MarketEventType.REGULATION) {
+        // Macro / Policy / Regulation event
+        const isRegulation =
+            eventType === MarketEventType.REGULATION ||
+            eventType === MarketEventType.GOVERNMENT_POLICY ||
+            entity === 'sec' ||
+            entity === 'cftc' ||
+            text.includes('regulation') ||
+            text.includes('rule change') ||
+            text.includes('listing rule');
+
+        if (isRegulation) {
+            return `regulation_${entity}_${normalizedTokens || 'policy'}`.toLowerCase();
+        }
+
+        if (
+            eventType === MarketEventType.CENTRAL_BANK_DECISION ||
+            eventType === MarketEventType.MACRO_DATA
+        ) {
             return `${eventType}_${entity}_${normalizedTokens || 'macro'}`.toLowerCase();
         }
 
@@ -365,7 +581,7 @@ export class CryptoDigestSelectionService {
     }
 
     /**
-     * Memecoin Quality Validation (Section 11)
+     * Memecoin Quality Validation
      */
     private satisfiesMemecoinRules(event: AggregatedMarketEvent): boolean {
         // Condition 1: Official exchange / broker mention or listing

@@ -224,7 +224,7 @@ describe('CryptoDigestService: End-to-End AI Digest Integration', () => {
         expect(result.itemCount).toBe(3);
         expect(result.previewText).toContain('🚀 CRYPTO INTELLIGENCE DIGEST');
         expect(result.previewText).toContain('Fed chính thức cắt giảm lãi suất');
-        expect(result.previewText).toContain('Tại sao đáng chú ý:');
+        expect(result.previewText).toContain('💡 Vì sao đáng chú ý');
         expect(result.previewText).toContain('Kích thích thanh khoản');
     });
 });

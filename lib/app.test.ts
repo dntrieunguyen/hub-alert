@@ -13,7 +13,16 @@ describe('index', () => {
     it('serve index', async () => {
         const res = await app.request('/');
         expect(res.status).toBe(200);
-        expect(await res.text()).toContain('Welcome to RSSHub!');
+        const text = await res.text();
+        expect(text).toContain('Welcome to');
+        expect(text).toContain('Hub Alert');
+    });
+
+    it('serves collector latest endpoint without 404', async () => {
+        const res = await app.request('/api/collector/latest?notify=false');
+        expect(res.status).toBe(200);
+        const json: any = await res.json();
+        expect(json).toHaveProperty('items');
     });
 });
 

@@ -20,6 +20,11 @@ export interface DigestConfig {
     maxItems: number;
     minCredibility: number;
     minRankingScore: number;
+    minImpactScore: number;
+    minInformationValue: number;
+    minMarketRelevance: number;
+    candidateBatchSize: number;
+    maxScanItems: number;
     criticalAlertEnabled: boolean;
     criticalAlertThreshold: number;
     timezone: string;
@@ -118,6 +123,8 @@ export interface DigestPayload {
     trendingTokens?: DigestTrendingToken[];
     macroHighlights?: string[];
     signalsToWatch?: string[];
+    overallImpactScore?: number;
+    overallImpactLabel?: string;
 }
 
 export enum DigestDeliveryStatus {
@@ -128,6 +135,7 @@ export enum DigestDeliveryStatus {
 
 export interface DigestDeliveryRecord {
     id: string;
+    slotKey?: string;
     startedAt: Date;
     windowFrom: Date;
     windowTo: Date;

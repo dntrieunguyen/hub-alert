@@ -4,12 +4,14 @@ import type { AggregatedMarketEvent, DigestRankingBreakdown, DigestRankingWeight
 
 export class CryptoDigestRankingService {
     private defaultWeights: DigestRankingWeights = {
-        credibility: 0.25,
+        credibility: 0.15,
         impact: 0.25,
-        verification: 0.20,
-        recency: 0.15,
-        crossSource: 0.10,
-        marketRelevance: 0.05,
+        verification: 0.15,
+        recency: 0.05,
+        crossSource: 0.05,
+        marketRelevance: 0.15,
+        aiInformationValue: 0.20,
+        aiMarketRelevance: 0.15,
     };
 
     /**
@@ -38,8 +40,8 @@ export class CryptoDigestRankingService {
         let weightSum: number;
 
         if (hasAi) {
-            const wAiInfo = weights.aiInformationValue ?? 0.15;
-            const wAiRel = weights.aiMarketRelevance ?? 0.10;
+            const wAiInfo = weights.aiInformationValue ?? 0.20;
+            const wAiRel = weights.aiMarketRelevance ?? 0.15;
 
             weightSum =
                 weights.credibility +
@@ -59,7 +61,7 @@ export class CryptoDigestRankingService {
                 aiInformationValue * wAiInfo +
                 aiMarketRelevance * wAiRel;
         } else {
-            const wRelevance = weights.marketRelevance ?? 0.05;
+            const wRelevance = weights.marketRelevance ?? 0.15;
             weightSum =
                 weights.credibility +
                 weights.impact +

@@ -14,11 +14,15 @@ import { InMemoryDigestDeliveryRepository } from './storage/in-memory-digest-del
 import type { AiNewsAnalyzer } from '../intelligence/ai-news-analyzer.interface';
 import {
     type AggregatedMarketEvent,
+    type DigestConfig,
     DigestDeliveryStatus,
     type DigestPayload,
     type DigestTrendingToken,
     type MarketSnapshotSection,
 } from './types';
+
+import { isCryptoMarketRelevant, isValidTitle } from './crypto-digest-relevance.service';
+import { detectGenericFiller, validateVietnameseOutput } from './crypto-digest-vietnamese-validator';
 
 export class CryptoDigestService {
     readonly configService: CryptoDigestConfigService;
@@ -78,7 +82,7 @@ export class CryptoDigestService {
 
     /**
      * Executes the complete Top 10 digest workflow:
-     * Collect -> Aggregate -> Rank -> Select Top 10 -> Summarize -> Format -> Send to Google Chat
+     * Idempotency Check -> Collect -> Aggregate -> Rank -> Select Top 10 -> Summarize -> Quality Validate -> Send
      */
     async generateAndSendDigest(options: { dryRun?: boolean; forceSend?: boolean } = {}): Promise<{
         success: boolean;
@@ -104,15 +108,43 @@ export class CryptoDigestService {
         );
         const periodHours = Math.max(1, Math.round((windowTo.getTime() - windowFrom.getTime()) / (1000 * 60 * 60)));
 
+        // Compute Slot Key for Idempotency Locking (Section 16: digest:{date}:{slot})
+        const timeParts = CryptoDigestScheduler.getVietnamTimeParts(windowTo, config.timezone);
+        const slotHour = timeParts.hour;
+        let slotName = '17:00';
+        if (slotHour >= 5 && slotHour < 11) {
+            slotName = '05:00';
+        } else if (slotHour >= 11 && slotHour < 17) {
+            slotName = '11:00';
+        }
+        const dateStr = `${timeParts.year}-${String(timeParts.month).padStart(2, '0')}-${String(timeParts.day).padStart(2, '0')}`;
+        const slotKey = `digest:${dateStr}:${slotName}`;
+
+        // If not dry run and not force send, prevent duplicate sends for the same slot
+        if (!options.dryRun && !options.forceSend) {
+            const existingSlotDelivery = await this.deliveryRepository.getDeliveryForSlot(slotKey);
+            if (existingSlotDelivery) {
+                logger.warn(`[crypto-digest.slot_locked] Digest for slot ${slotKey} was already sent. Skipping duplicate dispatch.`);
+                return {
+                    success: true,
+                    itemCount: existingSlotDelivery.itemCount,
+                    previewText: existingSlotDelivery.previewText,
+                    message: `Digest for slot ${slotKey} was already delivered`,
+                };
+            }
+        }
+
         logger.info(
-            `[crypto-digest.started] Building digest for lookback window ${windowFrom.toISOString()} -> ${windowTo.toISOString()} (${periodHours}h in ${config.timezone})`
+            `[crypto-digest.started] Building digest for lookback window ${windowFrom.toISOString()} -> ${windowTo.toISOString()} (${periodHours}h in ${config.timezone}, slot: ${slotKey})`
         );
 
-        // 1. Query candidate items from repository
+        // 1. Query candidate items from repository up to maxScanItems for candidate replenishment
+        const maxScan = config.maxScanItems || 300;
         const { items: rawFeedItems } = await this.feedRepository.findItems({
             from: windowFrom,
             to: windowTo,
-            minCredibility: Math.min(config.minCredibility, 60), // Query slightly broader so cross-source aggregator has context
+            minCredibility: Math.min(config.minCredibility, 60), // Query broader so cross-source aggregator has context
+            limit: maxScan,
         });
 
         // 2. Convert to MarketEvents
@@ -121,7 +153,7 @@ export class CryptoDigestService {
         // 3. Retrieve previously delivered fingerprints to prevent duplicates
         const deliveredFingerprints = await this.deliveryRepository.getDeliveredFingerprints();
 
-        // 4. Run selection pipeline (Deduplicate, Candidate filter, AI Batch analysis, Score, Diversity, Limit <= 10)
+        // 4. Run selection pipeline (Pre-filter, Deduplicate, Replenish candidates, AI analysis, Diversity, Limit <= 10)
         const topItems = await this.selectionService.selectDigestEvents(
             marketEvents,
             config,
@@ -133,6 +165,7 @@ export class CryptoDigestService {
         if (topItems.length === 0) {
             logger.info('[crypto-digest.empty] No high quality items met the threshold in the current window. Skipping digest dispatch.');
             await this.deliveryRepository.recordDelivery({
+                slotKey,
                 windowFrom,
                 windowTo,
                 itemCount: 0,
@@ -160,7 +193,11 @@ export class CryptoDigestService {
         const macroHighlights = this.buildMacroHighlights(topItems);
         const signalsToWatch = this.buildSignalsToWatch(topItems);
 
-        // 8. Build Payload and Format
+        // 8. Overall Impact calculation
+        const overallImpactScore = this.formatterService.calculateOverallImpactScore(topItems);
+        const overallImpactLabel = this.formatterService.formatOverallImpactLabel(overallImpactScore);
+
+        // 9. Build Payload and Format
         const payload: DigestPayload = {
             id: `digest_${Date.now()}`,
             title: `Top ${topItems.length} Crypto Intelligence Digest`,
@@ -171,7 +208,21 @@ export class CryptoDigestService {
             trendingTokens,
             macroHighlights,
             signalsToWatch,
+            overallImpactScore,
+            overallImpactLabel,
         };
+
+        // 10. Quality Validation before Dispatch (Section 30)
+        const qualityResult = this.validateDigestQuality(payload, config);
+        if (!qualityResult.isValid) {
+            const errMsg = `Digest quality validation failed: ${qualityResult.errors.join('; ')}`;
+            logger.error(`[crypto-digest.quality_rejected] ${errMsg}`);
+            return {
+                success: false,
+                itemCount: topItems.length,
+                error: errMsg,
+            };
+        }
 
         const digestText = this.formatterService.formatDigest(payload);
 
@@ -185,11 +236,12 @@ export class CryptoDigestService {
             };
         }
 
-        // 9. Dispatch to Google Chat
+        // 11. Dispatch to Google Chat
         if (!this.notificationService) {
             const errMsg = 'GoogleChatNotificationService is not configured';
             logger.error(`[crypto-digest.error] ${errMsg}`);
             await this.deliveryRepository.recordDelivery({
+                slotKey,
                 windowFrom,
                 windowTo,
                 itemCount: topItems.length,
@@ -210,6 +262,7 @@ export class CryptoDigestService {
             });
 
             await this.deliveryRepository.recordDelivery({
+                slotKey,
                 windowFrom,
                 windowTo,
                 itemCount: topItems.length,
@@ -220,7 +273,7 @@ export class CryptoDigestService {
                 previewText: digestText,
             });
 
-            logger.info(`[crypto-digest.dispatched] Successfully delivered Top ${topItems.length} digest to Google Chat`);
+            logger.info(`[crypto-digest.dispatched] Successfully delivered Top ${topItems.length} digest for slot ${slotKey} to Google Chat`);
             return {
                 success: true,
                 itemCount: topItems.length,
@@ -230,6 +283,7 @@ export class CryptoDigestService {
         } catch (error: any) {
             logger.error(`[crypto-digest.send_failed] ${error.message}`);
             await this.deliveryRepository.recordDelivery({
+                slotKey,
                 windowFrom,
                 windowTo,
                 itemCount: topItems.length,
@@ -242,6 +296,71 @@ export class CryptoDigestService {
             });
             return { success: false, itemCount: topItems.length, error: error.message };
         }
+    }
+
+    /**
+     * Quality Validation before sending to Google Chat (Section 30)
+     */
+    validateDigestQuality(payload: DigestPayload, config: DigestConfig): { isValid: boolean; errors: string[] } {
+        const errors: string[] = [];
+
+        if (payload.items.length > config.maxItems) {
+            errors.push(`Item count exceeds maximum allowed (${payload.items.length} > ${config.maxItems})`);
+        }
+
+        const seenFingerprints = new Set<string>();
+        const seenTitles = new Set<string>();
+
+        for (const item of payload.items) {
+            // Check no duplicate events
+            if (seenFingerprints.has(item.canonicalFingerprint)) {
+                errors.push(`Duplicate event detected with fingerprint: ${item.canonicalFingerprint}`);
+            }
+            seenFingerprints.add(item.canonicalFingerprint);
+
+            const title = item.vietnameseTitle || item.title;
+            const normalizedTitle = title.toLowerCase().trim();
+            if (seenTitles.has(normalizedTitle)) {
+                errors.push(`Duplicate title detected: "${title}"`);
+            }
+            seenTitles.add(normalizedTitle);
+
+            // Check no invalid titles
+            if (!isValidTitle(title)) {
+                errors.push(`Invalid title detected: "${title}"`);
+            }
+
+            // Check Vietnamese language output (no raw Chinese/Japanese/Korean)
+            if (!validateVietnameseOutput(title)) {
+                errors.push(`Non-Vietnamese characters detected in title: "${title}"`);
+            }
+            if (item.vietnameseSummary && !validateVietnameseOutput(item.vietnameseSummary)) {
+                errors.push(`Non-Vietnamese characters detected in summary for: "${title}"`);
+            }
+
+            // Check relevance
+            if (!isCryptoMarketRelevant(item.primaryEvent)) {
+                errors.push(`Irrelevant event detected: "${title}"`);
+            }
+
+            // Check minimum impact score (no impact 15)
+            if (item.impactScore < config.minImpactScore) {
+                errors.push(`Impact score ${item.impactScore} below minimum ${config.minImpactScore}: "${title}"`);
+            }
+
+            // Check generic AI filler
+            if (detectGenericFiller(item.vietnameseSummary)) {
+                errors.push(`Generic AI filler phrase detected in summary: "${title}"`);
+            }
+            if (detectGenericFiller(item.whyItMattersVi)) {
+                errors.push(`Generic AI filler phrase detected in whyItMatters: "${title}"`);
+            }
+        }
+
+        return {
+            isValid: errors.length === 0,
+            errors,
+        };
     }
 
     /**

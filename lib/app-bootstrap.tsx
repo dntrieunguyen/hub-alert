@@ -54,9 +54,9 @@ if (process.env.NODE_ENV !== 'test' && process.env.COLLECTOR_AUTO_START !== 'fal
     collector.digestScheduler.start();
 }
 
-app.route('/', registry);
-app.route('/api', api);
 app.route('/api/collector', collector.router);
+app.route('/api', api);
+app.route('/', registry);
 
 app.notFound(notFoundHandler);
 app.onError(errorHandler);

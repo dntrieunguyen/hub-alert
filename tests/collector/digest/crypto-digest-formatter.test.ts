@@ -95,33 +95,29 @@ describe('CryptoDigestFormatterService', () => {
 
         // Header checks
         expect(result).toContain('🚀 CRYPTO INTELLIGENCE DIGEST');
-        expect(result).toContain('Bản tin chắt lọc những sự kiện Crypto, Meme và thị trường');
+        expect(result).toContain('Top 1 sự kiện Crypto, Meme và thị trường đáng chú ý nhất');
 
-        // Section 1 checks
-        expect(result).toContain('📌 1. ĐIỂM TIN QUAN TRỌNG');
-        expect(result).toContain('1. <https://coinbase.com/listing/pepe|Coinbase thông báo niêm yết $PEPE>');
+        // Top 10 section checks
+        expect(result).toContain('📌 TOP 1 ĐIỂM TIN');
+        expect(result).toContain('1️⃣ Coinbase thông báo niêm yết $PEPE');
+        expect(result).toContain('🔗 <https://coinbase.com/listing/pepe|Xem nguồn>');
         expect(result).toContain('Coinbase Markets xác nhận hỗ trợ giao dịch $PEPE');
-        expect(result).toContain('Nguồn: Coinbase Markets (Nguồn chính thức)');
-        expect(result).toContain('Độ tin cậy: Chính thức / Rất cao');
-        expect(result).toContain('Mức ảnh hưởng: 92/100');
+        expect(result).toContain('• Xác minh: Nguồn chính thức');
+        expect(result).toContain('• Độ tin cậy: Rất cao (Chính thức)');
+        expect(result).toContain('• Ảnh hưởng: 92/100 — Rất lớn');
 
-        // Section 2 Market Snapshot checks
-        expect(result).toContain('📊 2. MARKET SNAPSHOT');
-        expect(result).toContain('• BTC: BTC tiếp tục tích lũy');
-        expect(result).toContain('• Macro: Fed chuẩn bị họp');
+        // Market assessment checks
+        expect(result).toContain('📊 ĐÁNH GIÁ THỊ TRƯỜNG');
+        expect(result).toContain('🌡️ Mức ảnh hưởng chung:');
 
-        // Section 3 Trending tokens checks
-        expect(result).toContain('🔥 3. TOKEN ĐANG ĐƯỢC CHÚ Ý');
+        // Trending tokens checks
+        expect(result).toContain('🔥 TOKEN ĐANG ĐƯỢC CHÚ Ý');
         expect(result).toContain('1. $PEPE — Trend Score 94/100 (Tốc độ đề cập 1h: +376%)');
-        expect(result).toContain('Nguồn nổi bật: Coinbase, Robinhood, CoinDesk');
+        expect(result).toContain('Nguồn: Coinbase, Robinhood, CoinDesk');
 
-        // Section 4 Macro & Regulation checks
-        expect(result).toContain('🏛️ 4. MACRO & REGULATION');
-        expect(result).toContain('• Federal Reserve: Quyết định lãi suất');
-
-        // Section 5 Signals to watch checks
-        expect(result).toContain('👀 5. CẦN THEO DÕI');
-        expect(result).toContain('• Token $PEPE đang xuất hiện');
+        // Signals to watch checks
+        expect(result).toContain('👀 CẦN THEO DÕI');
+        expect(result).toContain('Token $PEPE đang xuất hiện');
 
         // Footer check
         expect(result).toContain('Bản tin không cấu thành khuyến nghị đầu tư tài chính');
@@ -138,11 +134,9 @@ describe('CryptoDigestFormatterService', () => {
         };
 
         const result = formatter.formatDigest(payload);
-        expect(result).toContain('📌 1. ĐIỂM TIN QUAN TRỌNG');
-        expect(result).not.toContain('📊 2. MARKET SNAPSHOT');
-        expect(result).not.toContain('🔥 3. TOKEN ĐANG ĐƯỢC CHÚ Ý');
-        expect(result).not.toContain('🏛️ 4. MACRO & REGULATION');
-        expect(result).not.toContain('👀 5. CẦN THEO DÕI');
+        expect(result).toContain('📌 TOP 1 ĐIỂM TIN');
+        expect(result).not.toContain('🔥 TOKEN ĐANG ĐƯỢC CHÚ Ý');
+        expect(result).not.toContain('👀 CẦN THEO DÕI');
     });
 
     it('should include critical alert badge when item was previously alerted', () => {
@@ -158,6 +152,6 @@ describe('CryptoDigestFormatterService', () => {
         };
 
         const result = formatter.formatDigest(payload);
-        expect(result).toContain('⚠️ Trạng thái: [Đã phát cảnh báo khẩn cấp trước đó]');
+        expect(result).toContain('• Trạng thái: [Đã phát cảnh báo khẩn cấp trước đó]');
     });
 });

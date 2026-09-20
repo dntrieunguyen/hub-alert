@@ -1,5 +1,7 @@
 import { MarketEventType } from '../notifications/types';
 import type { AggregatedMarketEvent } from './types';
+import { validateVietnameseOutput, detectGenericFiller } from './crypto-digest-vietnamese-validator';
+import { isValidTitle } from './crypto-digest-relevance.service';
 
 export class CryptoDigestSummaryService {
     /**
@@ -10,9 +12,21 @@ export class CryptoDigestSummaryService {
      */
     generateVietnameseSummary(event: AggregatedMarketEvent): { title: string; summary: string; whyItMatters?: string } {
         if (event.aiAnalysis) {
-            const title = event.aiAnalysis.titleVi || this.generateVietnameseTitle(event);
-            const summary = event.aiAnalysis.summaryVi || this.buildDeterministicSummary(event);
-            const whyItMatters = event.aiAnalysis.whyItMattersVi;
+            let title = event.aiAnalysis.titleVi;
+            if (!title || !isValidTitle(title) || !validateVietnameseOutput(title)) {
+                title = this.generateVietnameseTitle(event);
+            }
+
+            let summary = event.aiAnalysis.summaryVi;
+            if (!summary || !validateVietnameseOutput(summary) || detectGenericFiller(summary)) {
+                summary = this.buildDeterministicSummary(event);
+            }
+
+            let whyItMatters = event.aiAnalysis.whyItMattersVi;
+            if (!whyItMatters || !validateVietnameseOutput(whyItMatters) || detectGenericFiller(whyItMatters)) {
+                whyItMatters = this.buildDeterministicWhyItMatters(event);
+            }
+
             return { title, summary, whyItMatters };
         }
 
@@ -23,22 +37,23 @@ export class CryptoDigestSummaryService {
     }
 
     private buildDeterministicWhyItMatters(event: AggregatedMarketEvent): string {
+        const tokenLabel = event.symbols[0] || (event.tokens[0] ? `$${event.tokens[0]}` : '');
         switch (event.eventType) {
             case MarketEventType.CENTRAL_BANK_DECISION:
             case MarketEventType.MACRO_DATA:
                 return 'Ảnh hưởng trực tiếp tới kỳ vọng thanh khoản, định giá USD và các tài sản rủi ro như BTC, ETH.';
             case MarketEventType.EXCHANGE_LISTING:
             case MarketEventType.BROKER_LISTING:
-                return 'Tăng mạnh khả năng tiếp cận và thanh khoản thị trường cho token, mở rộng tệp nhà đầu tư.';
+                return 'Tăng khả năng tiếp cận và thanh khoản thực tế cho token, mở rộng tệp nhà đầu tư tham gia.';
             case MarketEventType.ETF:
-                return 'Động lực then chốt cho dòng vốn tổ chức quy mô lớn tiếp cận trực tiếp thị trường crypto.';
+                return 'Mở rộng khả năng tiếp cận của các định chế tài chính và ảnh hưởng tới thanh khoản của tài sản cơ sở.';
             case MarketEventType.REGULATION:
             case MarketEventType.GOVERNMENT_POLICY:
                 return 'Tác động tới khuôn khổ pháp lý, cấp phép hoạt động và tính minh bạch dài hạn của ngành.';
             case MarketEventType.SECURITY_INCIDENT:
-                return 'Nguy cơ rút vốn đột ngột, lỗ hổng hợp đồng thông minh và rủi ro dây chuyền đối với hệ sinh thái.';
+                return 'Nguy cơ thất thoát tài sản, lỗ hổng hợp đồng thông minh và rủi ro dây chuyền đối với hệ sinh thái.';
             default:
-                return 'Sự kiện thu hút lượng lớn sự chú ý và có thể tạo biến động giao dịch ngắn hạn.';
+                return `Cung cấp thêm dữ liệu xác thực về hoạt động thực tế của ${tokenLabel || 'dự án'} trên thị trường.`;
         }
     }
 
@@ -151,8 +166,8 @@ export class CryptoDigestSummaryService {
 
             case MarketEventType.ETF: {
                 const s1 = `Cơ quan quản lý và các quỹ phát hành công bố diễn biến mới về hồ sơ ETF crypto.`;
-                const s2 = `Tiến trình phê duyệt hoặc cấp phép giao dịch là động lực then chốt quyết định dòng vốn quy mô lớn từ giới đầu tư truyền thống.`;
-                const s3 = `Tác động lan tỏa mạnh tới định giá của ${tokenLabel || 'BTC, ETH'} và tâm lý chung toàn thị trường.`;
+                const s2 = `Tiến trình phê duyệt hoặc điều chỉnh cơ chế giao dịch mở đường cho dòng vốn từ các quỹ đầu tư tổ chức tham gia trực tiếp.`;
+                const s3 = `Diễn biến này tác động rõ rệt tới thanh khoản và cơ cấu nhà đầu tư của ${tokenLabel || 'BTC, ETH'}.`;
                 return `${s1} ${s2} ${s3}`;
             }
 
@@ -191,7 +206,7 @@ export class CryptoDigestSummaryService {
                 const cleanSnippet = originalSnippet.replace(/<[^>]*>?/gm, '').slice(0, 160);
                 const s1 = `${cleanSnippet}.`;
                 const s2 = `${sourceConfirmText}`;
-                const s3 = `Sự kiện đang thu hút sự quan tâm của cộng đồng và có thể tác động ngắn hạn tới ${allTokens}.`;
+                const s3 = `Thông tin cung cấp thêm dữ liệu quan trọng cho các nhà phân tích theo dõi diễn biến của ${allTokens}.`;
                 return `${s1} ${s2} ${s3}`;
             }
         }

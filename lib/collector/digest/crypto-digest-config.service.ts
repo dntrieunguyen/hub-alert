@@ -16,7 +16,12 @@ export class CryptoDigestConfigService {
         const lookbackHours = this.parsePositiveInt(env.CRYPTO_DIGEST_LOOKBACK_HOURS, 6, 1, 72);
         const maxItems = this.parsePositiveInt(env.CRYPTO_DIGEST_MAX_ITEMS, 10, 1, 30);
         const minCredibility = this.parsePositiveInt(env.CRYPTO_DIGEST_MIN_CREDIBILITY, 70, 0, 100);
-        const minRankingScore = this.parsePositiveInt(env.CRYPTO_DIGEST_MIN_RANKING_SCORE, 65, 0, 100);
+        const minRankingScore = this.parsePositiveInt(env.CRYPTO_DIGEST_MIN_RANKING_SCORE, 60, 0, 100);
+        const minImpactScore = this.parsePositiveInt(env.CRYPTO_DIGEST_MIN_IMPACT_SCORE, 45, 0, 100);
+        const minInformationValue = this.parsePositiveInt(env.CRYPTO_DIGEST_MIN_INFORMATION_VALUE, 60, 0, 100);
+        const minMarketRelevance = this.parsePositiveInt(env.CRYPTO_DIGEST_MIN_MARKET_RELEVANCE, 60, 0, 100);
+        const candidateBatchSize = this.parsePositiveInt(env.CRYPTO_DIGEST_CANDIDATE_BATCH_SIZE, 50, 10, 100);
+        const maxScanItems = this.parsePositiveInt(env.CRYPTO_DIGEST_MAX_SCAN_ITEMS, 300, 50, 1000);
 
         const rawCriticalEnabled = env.CRYPTO_CRITICAL_ALERT_ENABLED?.trim().toLowerCase();
         const criticalAlertEnabled = rawCriticalEnabled === undefined ? true : rawCriticalEnabled === 'true' || rawCriticalEnabled === '1';
@@ -30,22 +35,22 @@ export class CryptoDigestConfigService {
 
         const rawAiEnabled = env.AI_NEWS_ENABLED?.trim().toLowerCase();
         const aiEnabled = rawAiEnabled === undefined ? true : rawAiEnabled === 'true' || rawAiEnabled === '1';
-        const aiMaxCandidates = this.parsePositiveInt(env.AI_NEWS_MAX_CANDIDATES, 30, 5, 100);
+        const aiMaxCandidates = this.parsePositiveInt(env.AI_NEWS_MAX_CANDIDATES, 50, 5, 100);
 
         const weights: DigestRankingWeights = {
-            credibility: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_CREDIBILITY, aiEnabled ? 0.20 : 0.25),
-            impact: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_IMPACT, aiEnabled ? 0.20 : 0.25),
-            verification: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_VERIFICATION, aiEnabled ? 0.15 : 0.20),
-            recency: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_RECENCY, aiEnabled ? 0.10 : 0.15),
-            crossSource: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_CROSS_SOURCE, 0.10),
-            marketRelevance: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_RELEVANCE, 0.05),
-            aiInformationValue: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_INFO, aiEnabled ? 0.15 : 0),
-            aiMarketRelevance: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_RELEVANCE, aiEnabled ? 0.10 : 0),
+            credibility: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_CREDIBILITY, 0.15),
+            impact: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_IMPACT, 0.25),
+            verification: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_VERIFICATION, 0.15),
+            recency: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_RECENCY, 0.05),
+            crossSource: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_CROSS_SOURCE, 0.05),
+            marketRelevance: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_RELEVANCE, 0.15),
+            aiInformationValue: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_INFO, aiEnabled ? 0.20 : 0),
+            aiMarketRelevance: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_RELEVANCE, aiEnabled ? 0.15 : 0),
         };
 
         const diversity = {
             maxPerToken: this.parsePositiveInt(env.CRYPTO_DIGEST_MAX_PER_TOKEN, 2, 1, 10),
-            maxPerSource: this.parsePositiveInt(env.CRYPTO_DIGEST_MAX_PER_SOURCE, 3, 1, 10),
+            maxPerSource: this.parsePositiveInt(env.CRYPTO_DIGEST_MAX_PER_SOURCE, 2, 1, 10),
             maxPerTopic: this.parsePositiveInt(env.CRYPTO_DIGEST_MAX_PER_TOPIC, 3, 1, 10),
             maxPerEvent: 1,
         };
@@ -57,6 +62,11 @@ export class CryptoDigestConfigService {
             maxItems,
             minCredibility,
             minRankingScore,
+            minImpactScore,
+            minInformationValue,
+            minMarketRelevance,
+            candidateBatchSize,
+            maxScanItems,
             criticalAlertEnabled,
             criticalAlertThreshold,
             timezone,
