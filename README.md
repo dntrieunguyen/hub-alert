@@ -136,11 +136,13 @@ Hệ thống cung cấp các REST API endpoints để quản lý và kích hoạ
 
 | Phương thức | Đường dẫn | Mô tả |
 |---|---|---|
+| `GET` | `/api/collector/feeds/latest` *(hoặc `/latest`)* | Lấy danh sách tin mới nhất và **tự động gửi message lên Google Chat Space** (hỗ trợ `?limit=20`, `?notify=false`) |
 | `GET` | `/api/collector/status` | Lấy trạng thái hiện tại, số lượng tin đã xử lý và số liệu thống kê |
 | `POST` | `/api/collector/start` | Khởi động cron job thu thập tin tức |
 | `POST` | `/api/collector/stop` | Tạm dừng cron job thu thập |
 | `POST` | `/api/collector/run-now` | Kích hoạt ngay lập tức một chu kỳ cào tin và phân tích |
 | `POST` | `/api/collector/digest` | Tạo và gửi bản tin tổng hợp Crypto Digest thủ công |
+| `POST` | `/api/collector/notifications/google-chat/test` | Gửi tin nhắn kiểm tra kết nối Google Chat Webhook |
 
 ---
 

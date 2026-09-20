@@ -9,6 +9,7 @@ import type { FeedSchedulerService } from '../scheduler/feed-scheduler.service';
 import type { FeedSourceService } from '../sources/feed-source.service';
 import type { IFeedRepository } from '../storage/feed-repository.interface';
 import type { TokenTrendService } from '../trends/token-trend.service';
+import { GoogleChatMessageFormatter } from '../notifications/google-chat/google-chat-message.formatter';
 import type { CryptoFeedItem, FeedCategory, FeedFilterOptions, SourceTier, VerificationStatus, XEventType, XSourceType } from '../types';
 import { INITIAL_X_SOURCES } from '../x';
 
@@ -112,16 +113,118 @@ export const createCollectorRouter = (dependencies: {
         });
     });
 
+    // Helper to format latest items into Google Chat message
+    const formatLatestFeedsMessage = (items: CryptoFeedItem[]): string => {
+        const formatter = notificationModule?.formatter ?? new GoogleChatMessageFormatter();
+        const nowVietnam = formatter.formatVietnamTime(new Date());
+
+        if (items.length === 0) {
+            return `⚡ [HUB ALERT] TIN TỨC MỚI NHẤT (LATEST FEEDS)\n🕒 Thời gian: ${nowVietnam}\n\nHiện chưa có tin tức mới trong hệ thống. Vui lòng thử lại sau.`;
+        }
+
+        const lines: string[] = [
+            `⚡ [HUB ALERT] TIN TỨC MỚI NHẤT (LATEST FEEDS)`,
+            `🕒 Cập nhật: ${nowVietnam}`,
+            `📊 Số lượng tin: ${items.length}`,
+            '',
+            '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+        ];
+
+        // Send top 10 items to prevent message exceeding Google Chat character limit
+        const displayItems = items.slice(0, 10);
+
+        displayItems.forEach((item, index) => {
+            const title = item.title || 'Không có tiêu đề';
+            const url = item.url || '#';
+            const source = item.sourceName || 'Unknown';
+            const time = item.publishedAt ? formatter.formatVietnamTime(item.publishedAt) : '';
+            const summary = item.summary
+                ? item.summary.length > 200
+                    ? item.summary.slice(0, 197) + '...'
+                    : item.summary
+                : '';
+            const tokens = item.tokens && item.tokens.length > 0 ? ` | Tokens: ${item.tokens.join(', ')}` : '';
+            const impact = item.impactScore !== undefined ? ` | Tác động: ${item.impactScore}/100` : '';
+
+            lines.push(`${index + 1}. <${url}|${title}>`);
+            if (summary) {
+                lines.push(`> ${summary}`);
+            }
+            lines.push(`🏷️ Nguồn: ${source}${tokens}${impact}${time ? ` | 🕒 ${time}` : ''}`);
+            lines.push('');
+        });
+
+        if (items.length > 10) {
+            lines.push(`...và còn ${items.length - 10} tin khác.`);
+            lines.push('');
+        }
+
+        lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        lines.push('Dữ liệu tự động phát từ Hub Alert khi gọi API manual.');
+
+        return lines.join('\n').trim();
+    };
+
     /**
-     * GET /feeds/latest
+     * GET /feeds/latest & GET /latest
+     * When called manually, returns latest items and automatically sends a formatted message to Google Chat
      */
-    router.get('/feeds/latest', async (c) => {
+    const handleLatestFeeds = async (c: any) => {
         const limit = Math.min(100, Number.parseInt(c.req.query('limit') || '20', 10));
-        const items = await repository.findLatest(limit);
+        const notifyQuery = c.req.query('notify');
+        // By default, automatically send to Google Chat unless explicitly set to 'false' or '0'
+        const shouldNotify = notifyQuery !== 'false' && notifyQuery !== '0';
+
+        let items = await repository.findLatest(limit);
+
+        // If cache has no items yet, attempt to collect from available enabled sources once
+        if (items.length === 0) {
+            const sources = sourceService.getAllSources().filter((s) => s.enabled);
+            if (sources.length > 0) {
+                const sourcesToCollect = sources.slice(0, 3);
+                await Promise.allSettled(sourcesToCollect.map((s) => collectorService.collectAndProcessSource(s)));
+                items = await repository.findLatest(limit);
+            }
+        }
+
+        let notificationStatus: { sent: boolean; message?: string; error?: string } = {
+            sent: false,
+        };
+
+        if (shouldNotify && notificationModule) {
+            if (!notificationModule.configService.isEnabled()) {
+                notificationStatus = {
+                    sent: false,
+                    message: 'Google Chat notification is disabled in configuration (GOOGLE_CHAT_ENABLED=false)',
+                };
+            } else {
+                try {
+                    const message = formatLatestFeedsMessage(items);
+                    await notificationModule.notificationService.sendText(message, {
+                        eventId: `manual_latest_${Date.now()}`,
+                        severity: 'INFO',
+                    });
+                    notificationStatus = {
+                        sent: true,
+                        message: 'Notification sent to Google Chat successfully',
+                    };
+                } catch (err: any) {
+                    notificationStatus = {
+                        sent: false,
+                        error: err.message,
+                    };
+                }
+            }
+        }
+
         return c.json({
             items: items.map(formatFeedItem),
+            notification: notificationStatus,
         });
-    });
+    };
+
+    router.get('/feeds/latest', handleLatestFeeds);
+    router.get('/latest', handleLatestFeeds);
 
     /**
      * GET /feeds/breaking
