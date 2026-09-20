@@ -113,12 +113,58 @@ export interface MarketSnapshotSection {
     macroContext?: string;
 }
 
+export type MarketNarrativeStrength = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface MarketNarrative {
+    titleVi: string;
+    summaryVi: string;
+    strength: MarketNarrativeStrength;
+    supportingEventIds: string[];
+}
+
+export interface AssetAnalysisItem {
+    asset: string;
+    outlook: string;
+    summaryVi: string;
+    signalsVi: string[];
+}
+
+export interface IgnoredEventItem {
+    eventId: string;
+    reasonVi: string;
+}
+
+export interface MarketStateOutlook {
+    overall: string;
+    btc?: string;
+    eth?: string;
+    altcoin?: string;
+    meme?: string;
+}
+
+export interface MarketIntelligenceAnalysis {
+    summaryVi: string;
+    overallImpactScore: number;
+    analysisConfidence: number;
+    marketState: MarketStateOutlook;
+    narratives: MarketNarrative[];
+    assetAnalysis: AssetAnalysisItem[];
+    institutionalFlowVi?: string;
+    regulationVi?: string;
+    catalystsVi: string[];
+    risksVi: string[];
+    watchNextVi: string[];
+    usedEventIds: string[];
+    ignoredEventIds: IgnoredEventItem[];
+}
+
 export interface DigestPayload {
     id: string;
     title: string;
     periodHours: number;
     generatedAt: Date;
     items: AggregatedMarketEvent[];
+    marketIntelligence?: MarketIntelligenceAnalysis;
     snapshot?: MarketSnapshotSection;
     trendingTokens?: DigestTrendingToken[];
     macroHighlights?: string[];

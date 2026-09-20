@@ -82,7 +82,7 @@ describe('CryptoDigestService & Notification Integration', () => {
         // Check payload body sent to webhook
         const callArgs = mockFetch.mock.calls[0];
         const body = JSON.parse(callArgs[1].body);
-        expect(body.text).toContain('🚀 CRYPTO INTELLIGENCE DIGEST');
+        expect(body.text).toContain('🚀 CRYPTO MARKET INTELLIGENCE');
         expect(body.text).toContain('Coinbase Markets');
         expect(body.text).toContain('Federal Reserve');
 

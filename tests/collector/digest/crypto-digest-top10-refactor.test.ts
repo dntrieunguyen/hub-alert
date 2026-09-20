@@ -142,7 +142,7 @@ describe('Top 10 Scheduled Crypto Intelligence Digest Refactor (35 Rules)', () =
         };
         const text = formatter.formatDigest(payload);
 
-        expect(text).toContain('🚀 CRYPTO INTELLIGENCE DIGEST');
+        expect(text).toContain('🚀 CRYPTO MARKET INTELLIGENCE');
         expect(text).toContain('ETF');
         expect(validateVietnameseOutput(text)).toBe(true);
     });

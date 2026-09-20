@@ -18,6 +18,7 @@ import {
     DigestDeliveryStatus,
     type DigestPayload,
     type DigestTrendingToken,
+    type MarketIntelligenceAnalysis,
     type MarketSnapshotSection,
 } from './types';
 
@@ -187,23 +188,37 @@ export class CryptoDigestService {
             item.wasCriticalAlerted = await this.deliveryRepository.wasCriticalAlerted(item.primaryEvent.id);
         }
 
-        // 7. Assemble Sections (Snapshot, Trending, Macro, Signals)
+        // 7. Synthesize Market Intelligence Brief across topItems (AI or Deterministic Fallback)
+        let marketIntelligence: MarketIntelligenceAnalysis | null = null;
+        if (this.aiAnalyzer && config.aiEnabled && typeof this.aiAnalyzer.synthesizeMarketIntelligence === 'function') {
+            try {
+                marketIntelligence = await this.aiAnalyzer.synthesizeMarketIntelligence(topItems);
+            } catch (err: any) {
+                logger.warn(`[crypto-digest.ai_synthesis_failed] ${err.message}. Falling back to deterministic engine.`);
+            }
+        }
+
+        if (!marketIntelligence) {
+            marketIntelligence = this.summaryService.synthesizeDeterministicMarketIntelligence(topItems);
+        }
+
+        const overallImpactScore = marketIntelligence.overallImpactScore;
+        const overallImpactLabel = this.formatterService.formatOverallImpactLabel(overallImpactScore);
+
+        // 8. Assemble Sections (Snapshot, Trending, Macro, Signals)
         const snapshot = this.buildMarketSnapshot(topItems);
         const trendingTokens = await this.buildTrendingTokens();
         const macroHighlights = this.buildMacroHighlights(topItems);
-        const signalsToWatch = this.buildSignalsToWatch(topItems);
-
-        // 8. Overall Impact calculation
-        const overallImpactScore = this.formatterService.calculateOverallImpactScore(topItems);
-        const overallImpactLabel = this.formatterService.formatOverallImpactLabel(overallImpactScore);
+        const signalsToWatch = marketIntelligence.watchNextVi || this.buildSignalsToWatch(topItems);
 
         // 9. Build Payload and Format
         const payload: DigestPayload = {
             id: `digest_${Date.now()}`,
-            title: `Top ${topItems.length} Crypto Intelligence Digest`,
+            title: `Crypto Market Intelligence (${topItems.length} Events)`,
             periodHours,
             generatedAt: windowTo,
             items: topItems,
+            marketIntelligence,
             snapshot,
             trendingTokens,
             macroHighlights,
@@ -354,6 +369,15 @@ export class CryptoDigestService {
             }
             if (detectGenericFiller(item.whyItMattersVi)) {
                 errors.push(`Generic AI filler phrase detected in whyItMatters: "${title}"`);
+            }
+        }
+
+        if (payload.marketIntelligence) {
+            if (!payload.marketIntelligence.summaryVi || !validateVietnameseOutput(payload.marketIntelligence.summaryVi)) {
+                errors.push('Market intelligence summaryVi is missing or contains invalid characters');
+            }
+            if (!Array.isArray(payload.marketIntelligence.narratives) || payload.marketIntelligence.narratives.length === 0) {
+                errors.push('Market intelligence narratives are empty');
             }
         }
 

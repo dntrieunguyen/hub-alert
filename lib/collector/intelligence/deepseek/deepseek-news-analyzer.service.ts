@@ -1,11 +1,14 @@
 import logger from '@/utils/logger';
 import ofetch from '@/utils/ofetch';
 import type { MarketEvent } from '../../notifications/types';
+import type { AggregatedMarketEvent, MarketIntelligenceAnalysis } from '../../digest/types';
 import type { AiNewsAnalyzer } from '../ai-news-analyzer.interface';
 import { InMemoryAiAnalysisCache } from '../cache/in-memory-ai-analysis-cache';
 import type { AiAnalyzerConfig, AiInputEvent, AiNewsAnalysis } from '../types';
 import { buildDeepSeekUserPrompt, DEEPSEEK_SYSTEM_PROMPT } from './deepseek-prompt';
 import { DeepSeekValidator } from './deepseek-validator';
+import { buildMarketIntelligenceUserPrompt, DEEPSEEK_MARKET_INTELLIGENCE_SYSTEM_PROMPT } from './deepseek-market-intelligence-prompt';
+import { DeepSeekMarketIntelligenceValidator } from './deepseek-market-intelligence-validator';
 
 export class DeepSeekNewsAnalyzer implements AiNewsAnalyzer {
     readonly providerName = 'deepseek';
@@ -167,6 +170,50 @@ export class DeepSeekNewsAnalyzer implements AiNewsAnalyzer {
     async analyzeSingleEvent(event: MarketEvent): Promise<AiNewsAnalysis | null> {
         const map = await this.analyzeEvents([event]);
         return map.get(event.id) || null;
+    }
+
+    /**
+     * Synthesizes up to 10 top events into a unified MarketIntelligenceAnalysis brief
+     */
+    async synthesizeMarketIntelligence(events: AggregatedMarketEvent[]): Promise<MarketIntelligenceAnalysis | null> {
+        if (!this.config.enabled || !this.config.apiKey || !events || events.length === 0) {
+            return null;
+        }
+
+        try {
+            const url = 'https://api.deepseek.com/chat/completions';
+            const userPrompt = buildMarketIntelligenceUserPrompt(events);
+
+            const response = await this.fetchFn(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${this.config.apiKey}`,
+                },
+                body: {
+                    model: this.config.model,
+                    messages: [
+                        { role: 'system', content: DEEPSEEK_MARKET_INTELLIGENCE_SYSTEM_PROMPT },
+                        { role: 'user', content: userPrompt },
+                    ],
+                    response_format: { type: 'json_object' },
+                    temperature: 0.2,
+                },
+                timeout: this.config.timeoutMs || 30000,
+            });
+
+            const content = response?.choices?.[0]?.message?.content;
+            if (!content) {
+                return null;
+            }
+
+            const parsed = typeof content === 'string' ? JSON.parse(content) : content;
+            const eventIds = events.map((e) => e.id);
+            return DeepSeekMarketIntelligenceValidator.validateAnalysis(parsed, eventIds);
+        } catch (error: any) {
+            logger.error(`[ai.market_intelligence.failed] DeepSeek synthesis failed: ${error.message}`);
+            return null;
+        }
     }
 
     private async executeCallWithRetry(inputs: AiInputEvent[]): Promise<any> {

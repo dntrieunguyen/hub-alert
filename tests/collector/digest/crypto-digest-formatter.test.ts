@@ -66,92 +66,102 @@ describe('CryptoDigestFormatterService', () => {
         };
     };
 
-    it('should format a complete digest matching the requested Google Chat format', () => {
+    it('should format a complete digest matching the requested AI Market Intelligence Brief format', () => {
         const item1 = createSampleAggregated();
         const payload: DigestPayload = {
             id: 'digest_test_1',
-            title: 'Top 1 Crypto Intelligence Digest',
+            title: 'Top 1 Crypto Market Intelligence',
             periodHours: 6,
             generatedAt: new Date(),
             items: [item1],
-            snapshot: {
-                btcContext: 'BTC tiếp tục tích lũy quanh ngưỡng kháng cự chính',
-                macroContext: 'Fed chuẩn bị họp FOMC công bố lãi suất',
-            },
-            trendingTokens: [
-                {
-                    symbol: '$PEPE',
-                    name: 'Pepe',
-                    trendScore: 94,
-                    mentionChangePercent: 376,
-                    topSources: ['Coinbase', 'Robinhood', 'CoinDesk'],
+            marketIntelligence: {
+                summaryVi: 'Bitcoin và thị trường tiền mã hóa tiếp tục phân hóa mạnh mẽ. Hoạt động niêm yết mới của các sàn giao dịch lớn mang lại thanh khoản cho token meme, tuy nhiên dòng tiền lớn vẫn tập trung chọn lọc.',
+                overallImpactScore: 68,
+                analysisConfidence: 87,
+                marketState: {
+                    overall: 'NGHIÊNG TÍCH CỰC ĐỐI VỚI BTC, TRUNG LẬP ĐỐI VỚI ALTCOIN',
+                    btc: 'Tích cực',
+                    eth: 'Trung lập',
+                    altcoin: 'Thận trọng',
+                    meme: 'Theo dõi biến động',
                 },
-            ],
-            macroHighlights: ['Federal Reserve: Quyết định lãi suất giữ nguyên'],
-            signalsToWatch: ['Token $PEPE đang xuất hiện đồng thời trên Coinbase và Robinhood'],
+                narratives: [
+                    {
+                        titleVi: 'Sàn lớn mở rộng hỗ trợ giao dịch cho memecoin thanh khoản cao',
+                        summaryVi: 'Coinbase niêm yết $PEPE mở rộng cánh cửa tiếp cận vốn cho nhà đầu tư bán lẻ và tổ chức.',
+                        strength: 'HIGH',
+                        supportingEventIds: ['agg_1'],
+                    },
+                ],
+                assetAnalysis: [
+                    {
+                        asset: 'MEME',
+                        outlook: 'THEO DÕI',
+                        summaryVi: 'Dòng tiền đầu cơ có dấu hiệu tăng nhiệt cục bộ sau thông tin niêm yết.',
+                        signalsVi: ['Coinbase niêm yết $PEPE', 'Thanh khoản giao dịch đột biến ngắn hạn'],
+                    },
+                ],
+                catalystsVi: ['Coinbase chính thức mở giao dịch $PEPE'],
+                risksVi: ['Biến động hai chiều mạnh đối với nhóm memecoin'],
+                watchNextVi: ['Thanh khoản của $PEPE có được duy trì ổn định sau niêm yết?'],
+                usedEventIds: ['agg_1'],
+                ignoredEventIds: [],
+            },
         };
 
         const result = formatter.formatDigest(payload);
 
-        // Header checks
-        expect(result).toContain('🚀 CRYPTO INTELLIGENCE DIGEST');
-        expect(result).toContain('Top 1 sự kiện Crypto, Meme và thị trường đáng chú ý nhất');
+        // Header checks (Section 18 & 24)
+        expect(result).toContain('🚀 CRYPTO MARKET INTELLIGENCE');
+        expect(result).toContain('Phân tích tổng hợp từ 1 nguồn tin mới nhất và đáng chú ý.');
 
-        // Top 10 section checks
-        expect(result).toContain('📌 TOP 1 ĐIỂM TIN');
-        expect(result).toContain('1️⃣ Coinbase thông báo niêm yết $PEPE');
-        expect(result).toContain('🔗 <https://coinbase.com/listing/pepe|Xem nguồn>');
-        expect(result).toContain('Coinbase Markets xác nhận hỗ trợ giao dịch $PEPE');
-        expect(result).toContain('• Xác minh: Nguồn chính thức');
-        expect(result).toContain('• Độ tin cậy: Rất cao (Chính thức)');
-        expect(result).toContain('• Ảnh hưởng: 92/100 — Rất lớn');
+        // Market overview summary
+        expect(result).toContain('🧭 TÓM TẮT THỊ TRƯỜNG');
+        expect(result).toContain('Bitcoin và thị trường tiền mã hóa tiếp tục phân hóa mạnh mẽ.');
+        expect(result).toContain('🌡️ Trạng thái:');
+        expect(result).toContain('BTC: Tích cực');
+        expect(result).toContain('📊 Mức ảnh hưởng tổng hợp:');
+        expect(result).toContain('68/100 — Đáng chú ý');
 
-        // Market assessment checks
-        expect(result).toContain('📊 ĐÁNH GIÁ THỊ TRƯỜNG');
-        expect(result).toContain('🌡️ Mức ảnh hưởng chung:');
+        // Narratives
+        expect(result).toContain('🔥 1 NARRATIVE CHÍNH');
+        expect(result).toContain('1️⃣ Sàn lớn mở rộng hỗ trợ giao dịch cho memecoin thanh khoản cao');
 
-        // Trending tokens checks
-        expect(result).toContain('🔥 TOKEN ĐANG ĐƯỢC CHÚ Ý');
-        expect(result).toContain('1. $PEPE — Trend Score 94/100 (Tốc độ đề cập 1h: +376%)');
-        expect(result).toContain('Nguồn: Coinbase, Robinhood, CoinDesk');
+        // Asset analysis
+        expect(result).toContain('🐸 MEME — THEO DÕI');
+        expect(result).toContain('• Coinbase niêm yết $PEPE');
+        expect(result).toContain('→ Tín hiệu chính:');
 
-        // Signals to watch checks
+        // Catalysts, risks, watch
+        expect(result).toContain('🚀 CATALYST ĐÁNG CHÚ Ý');
+        expect(result).toContain('⚠️ RỦI RO');
         expect(result).toContain('👀 CẦN THEO DÕI');
-        expect(result).toContain('Token $PEPE đang xuất hiện');
 
-        // Footer check
-        expect(result).toContain('Bản tin không cấu thành khuyến nghị đầu tư tài chính');
+        // Sources appendix (Section 19: 1 line per source)
+        expect(result).toContain('📰 NGUỒN THAM CHIẾU');
+        expect(result).toContain('1. Coinbase Markets — Coinbase thông báo niêm yết $PEPE');
+
+        // Confidence and disclaimer (Section 18)
+        expect(result).toContain('📊 Độ tin cậy phân tích: 87/100 — Cao');
+        expect(result).toContain('Thông tin nhằm hỗ trợ theo dõi thị trường,');
+        expect(result).toContain('không phải khuyến nghị đầu tư.');
     });
 
-    it('should omit optional sections when no data exists', () => {
+    it('should fallback gracefully to deterministic synthesis when marketIntelligence is not pre-set', () => {
         const item1 = createSampleAggregated();
         const payload: DigestPayload = {
             id: 'digest_test_2',
-            title: 'Top 1 Crypto Intelligence Digest',
+            title: 'Top 1 Crypto Market Intelligence',
             periodHours: 6,
             generatedAt: new Date(),
             items: [item1],
         };
 
         const result = formatter.formatDigest(payload);
-        expect(result).toContain('📌 TOP 1 ĐIỂM TIN');
-        expect(result).not.toContain('🔥 TOKEN ĐANG ĐƯỢC CHÚ Ý');
-        expect(result).not.toContain('👀 CẦN THEO DÕI');
-    });
-
-    it('should include critical alert badge when item was previously alerted', () => {
-        const item1 = createSampleAggregated();
-        item1.wasCriticalAlerted = true;
-
-        const payload: DigestPayload = {
-            id: 'digest_test_3',
-            title: 'Top 1 Crypto Intelligence Digest',
-            periodHours: 6,
-            generatedAt: new Date(),
-            items: [item1],
-        };
-
-        const result = formatter.formatDigest(payload);
-        expect(result).toContain('• Trạng thái: [Đã phát cảnh báo khẩn cấp trước đó]');
+        expect(result).toContain('🚀 CRYPTO MARKET INTELLIGENCE');
+        expect(result).toContain('🧭 TÓM TẮT THỊ TRƯỜNG');
+        expect(result).toContain('NARRATIVE CHÍNH');
+        expect(result).toContain('📰 NGUỒN THAM CHIẾU');
+        expect(result).toContain('1. Coinbase Markets —');
     });
 });

@@ -222,9 +222,9 @@ describe('CryptoDigestService: End-to-End AI Digest Integration', () => {
         expect(result.success).toBe(true);
         // Only 3 items in input, so output should be 3 items, never padded to 10!
         expect(result.itemCount).toBe(3);
-        expect(result.previewText).toContain('🚀 CRYPTO INTELLIGENCE DIGEST');
+        expect(result.previewText).toContain('🚀 CRYPTO MARKET INTELLIGENCE');
         expect(result.previewText).toContain('Fed chính thức cắt giảm lãi suất');
-        expect(result.previewText).toContain('💡 Vì sao đáng chú ý');
-        expect(result.previewText).toContain('Kích thích thanh khoản');
+        expect(result.previewText).toContain('🧭 TÓM TẮT THỊ TRƯỜNG');
+        expect(result.previewText).toContain('NARRATIVE CHÍNH');
     });
 });

@@ -1,38 +1,78 @@
+import { CryptoDigestSummaryService } from './crypto-digest-summary.service';
+import type {
+    AggregatedMarketEvent,
+    DigestPayload,
+    MarketIntelligenceAnalysis,
+} from './types';
 import { VerificationStatus } from '../types';
-import type { AggregatedMarketEvent, DigestPayload, DigestTrendingToken } from './types';
-import { isValidHttpUrl } from './crypto-digest-vietnamese-validator';
 
 const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
 export class CryptoDigestFormatterService {
+    private summaryService = new CryptoDigestSummaryService();
+
     /**
-     * Formats a complete DigestPayload into the Top 10 Google Chat Markdown structure
-     * strictly following Sections 24, 25, 26, 27, 28, and 29.
+     * Formats a complete DigestPayload into the AI Crypto Market Intelligence Brief
+     * strictly following Sections 18, 19, 20, 24, 25 of the specification.
      */
     formatDigest(payload: DigestPayload): string {
         const dateStr = this.formatVietnamDate(payload.generatedAt);
         const itemCount = payload.items.length;
 
+        // Ensure Market Intelligence Analysis is present; fallback to deterministic engine if not provided
+        const intel: MarketIntelligenceAnalysis =
+            payload.marketIntelligence ?? this.summaryService.synthesizeDeterministicMarketIntelligence(payload.items);
+
         const lines: string[] = [];
 
-        // 1. Header
-        lines.push('🚀 CRYPTO INTELLIGENCE DIGEST');
+        // 1. Header (Section 18 & 24)
+        lines.push('🚀 CRYPTO MARKET INTELLIGENCE');
         lines.push(`🕒 ${dateStr}`);
         lines.push('');
-        lines.push(`Top ${itemCount} sự kiện Crypto, Meme và thị trường đáng chú ý nhất kể từ bản tin trước.`);
+        lines.push(`Phân tích tổng hợp từ ${itemCount} nguồn tin mới nhất và đáng chú ý.`);
         lines.push('');
         lines.push('━━━━━━━━━━━━━━━━━━');
         lines.push('');
 
-        // 2. Top 10 Điểm Tin
-        lines.push(`📌 TOP ${itemCount} ĐIỂM TIN`);
+        // 2. Tóm tắt thị trường (Section 18)
+        lines.push('🧭 TÓM TẮT THỊ TRƯỜNG');
+        lines.push('');
+        lines.push(intel.summaryVi);
+        lines.push('');
+        lines.push('🌡️ Trạng thái:');
+        if (intel.marketState.btc) {
+            lines.push(`BTC: ${intel.marketState.btc}`);
+        }
+        if (intel.marketState.eth) {
+            lines.push(`ETH: ${intel.marketState.eth}`);
+        }
+        if (intel.marketState.altcoin) {
+            lines.push(`Altcoin: ${intel.marketState.altcoin}`);
+        }
+        if (intel.marketState.meme) {
+            lines.push(`Meme: ${intel.marketState.meme}`);
+        }
+        lines.push('');
+        const overallScore = intel.overallImpactScore;
+        const overallLabel = this.formatOverallImpactLabel(overallScore);
+        lines.push('📊 Mức ảnh hưởng tổng hợp:');
+        lines.push(`${overallScore}/100 — ${overallLabel}`);
+        lines.push('');
+        lines.push('━━━━━━━━━━━━━━━━━━');
         lines.push('');
 
-        payload.items.forEach((item, index) => {
-            lines.push(this.formatStoryItem(item, index + 1));
-            if (index < payload.items.length - 1) {
+        // 3. Narrative chính (Section 5 & 18)
+        const narrativeCount = intel.narratives.length;
+        lines.push(`🔥 ${narrativeCount} NARRATIVE CHÍNH`);
+        lines.push('');
+
+        intel.narratives.forEach((n, idx) => {
+            const emoji = idx < NUMBER_EMOJIS.length ? NUMBER_EMOJIS[idx] : `${idx + 1}️⃣`;
+            lines.push(`${emoji} ${n.titleVi}`);
+            lines.push('');
+            lines.push(n.summaryVi);
+            if (idx < intel.narratives.length - 1) {
                 lines.push('');
-                lines.push('──────────────────');
                 lines.push('');
             }
         });
@@ -41,133 +81,131 @@ export class CryptoDigestFormatterService {
         lines.push('━━━━━━━━━━━━━━━━━━');
         lines.push('');
 
-        // 3. Đánh Giá Thị Trường (Section 27 & 28)
-        lines.push('📊 ĐÁNH GIÁ THỊ TRƯỜNG');
-        lines.push('');
+        // 4. Asset-level analysis (Section 9 & 18)
+        if (intel.assetAnalysis && intel.assetAnalysis.length > 0) {
+            intel.assetAnalysis.forEach((a, idx) => {
+                const assetUpper = a.asset.toUpperCase();
+                let assetHeader: string;
+                switch (assetUpper) {
+                    case 'BTC':
+                        assetHeader = `₿ BTC — ${a.outlook}`;
+                        break;
+                    case 'ETH':
+                        assetHeader = `Ξ ETH — ${a.outlook}`;
+                        break;
+                    case 'ALTCOIN':
+                        assetHeader = `🪙 ALTCOIN — ${a.outlook}`;
+                        break;
+                    case 'MEME':
+                        assetHeader = `🐸 MEME — ${a.outlook}`;
+                        break;
+                    default:
+                        assetHeader = `${assetUpper} — ${a.outlook}`;
+                        break;
+                }
 
-        const overallScore = payload.overallImpactScore ?? this.calculateOverallImpactScore(payload.items);
-        const overallLabel = payload.overallImpactLabel ?? this.formatOverallImpactLabel(overallScore);
-        lines.push(`🌡️ Mức ảnh hưởng chung: ${overallScore}/100 — ${overallLabel}`);
-        lines.push('');
+                lines.push(assetHeader);
+                lines.push('');
+                for (const sig of a.signalsVi) {
+                    lines.push(`• ${sig}`);
+                }
+                lines.push('');
+                lines.push('→ Tín hiệu chính:');
+                lines.push(a.summaryVi);
 
-        const topNarratives = this.extractTopNarratives(payload.items);
-        if (topNarratives.length > 0) {
-            lines.push('Các narrative nổi bật:');
-            for (const n of topNarratives) {
-                lines.push(`• ${n}`);
-            }
+                if (idx < intel.assetAnalysis.length - 1) {
+                    lines.push('');
+                    lines.push('');
+                }
+            });
             lines.push('');
-        }
-
-        const topTokens = this.extractTopTokens(payload.items);
-        if (topTokens.length > 0) {
-            lines.push('Tài sản được nhắc đến nhiều:');
-            for (const t of topTokens) {
-                lines.push(`• ${t}`);
-            }
-            lines.push('');
-        }
-
-        // 4. Trending Tokens (If available)
-        if (payload.trendingTokens && payload.trendingTokens.length > 0) {
             lines.push('━━━━━━━━━━━━━━━━━━');
             lines.push('');
-            lines.push('🔥 TOKEN ĐANG ĐƯỢC CHÚ Ý');
+        }
+
+        // 5. Institutional flows (Section 10 & 18)
+        if (intel.institutionalFlowVi) {
+            lines.push('🏦 DÒNG TIỀN TỔ CHỨC');
             lines.push('');
-            lines.push(this.formatTrendingTokens(payload.trendingTokens.slice(0, 5)));
+            lines.push(intel.institutionalFlowVi);
+            lines.push('');
+            lines.push('━━━━━━━━━━━━━━━━━━');
             lines.push('');
         }
 
-        // 5. Cần Theo Dõi (Section 29)
-        const signals = payload.signalsToWatch || this.buildSignalsToWatch(payload.items);
-        if (signals && signals.length > 0) {
+        // 6. Regulation (Section 11 & 18)
+        if (intel.regulationVi) {
+            lines.push('🏛️ PHÁP LÝ & THỊ TRƯỜNG');
+            lines.push('');
+            lines.push(intel.regulationVi);
+            lines.push('');
             lines.push('━━━━━━━━━━━━━━━━━━');
             lines.push('');
+        }
+
+        // 7. Catalysts (Section 14 & 18)
+        if (intel.catalystsVi && intel.catalystsVi.length > 0) {
+            lines.push('🚀 CATALYST ĐÁNG CHÚ Ý');
+            lines.push('');
+            for (const c of intel.catalystsVi) {
+                lines.push(`• ${c}`);
+            }
+            lines.push('');
+            lines.push('━━━━━━━━━━━━━━━━━━');
+            lines.push('');
+        }
+
+        // 8. Key risks (Section 15 & 18)
+        if (intel.risksVi && intel.risksVi.length > 0) {
+            lines.push('⚠️ RỦI RO');
+            lines.push('');
+            for (const r of intel.risksVi) {
+                lines.push(`• ${r}`);
+            }
+            lines.push('');
+            lines.push('━━━━━━━━━━━━━━━━━━');
+            lines.push('');
+        }
+
+        // 9. Things to watch (Section 16 & 18)
+        if (intel.watchNextVi && intel.watchNextVi.length > 0) {
             lines.push('👀 CẦN THEO DÕI');
             lines.push('');
-            for (const s of signals) {
-                lines.push(`• ${s}`);
+            for (const w of intel.watchNextVi) {
+                lines.push(`• ${w}`);
             }
+            lines.push('');
+            lines.push('━━━━━━━━━━━━━━━━━━');
             lines.push('');
         }
 
-        // 6. Disclaimer
+        // 10. Sources Appendix (Section 19: max 1 line / source)
+        lines.push('📰 NGUỒN THAM CHIẾU');
+        lines.push('');
+        const usedSet = new Set(intel.usedEventIds || payload.items.map((i) => i.id));
+        const relevantItems = payload.items.filter((i) => usedSet.has(i.id));
+        const itemsToDisplay = relevantItems.length > 0 ? relevantItems : payload.items;
+
+        itemsToDisplay.slice(0, 10).forEach((item, idx) => {
+            const sourceName = item.sources[0]?.name || item.primaryEvent.source.name;
+            const topicOrTitle = this.formatSourceTopic(item);
+            const line = `${idx + 1}. ${sourceName} — ${topicOrTitle}`;
+            lines.push(line);
+        });
+
+        lines.push('');
         lines.push('━━━━━━━━━━━━━━━━━━');
-        lines.push('Dữ liệu được tổng hợp từ các nguồn chính thức và nguồn tin có độ tin cậy cao.');
-        lines.push('Bản tin không cấu thành khuyến nghị đầu tư tài chính.');
+        lines.push('');
+
+        // 11. Footer / Confidence (Section 17 & 18)
+        const confidenceScore = intel.analysisConfidence;
+        const confidenceLabel = this.formatConfidenceLabel(confidenceScore);
+        lines.push(`📊 Độ tin cậy phân tích: ${confidenceScore}/100 — ${confidenceLabel}`);
+        lines.push('');
+        lines.push('Thông tin nhằm hỗ trợ theo dõi thị trường,');
+        lines.push('không phải khuyến nghị đầu tư.');
 
         return lines.join('\n').trim();
-    }
-
-    private formatStoryItem(item: AggregatedMarketEvent, rank: number): string {
-        const emoji = rank <= 10 ? NUMBER_EMOJIS[rank - 1] : `${rank}.`;
-        const title = item.vietnameseTitle || item.title;
-        const summary = item.vietnameseSummary || item.summary || title;
-        const url = item.canonicalUrl;
-
-        const lines: string[] = [];
-
-        // Title line
-        lines.push(`${emoji} ${title}`);
-
-        // Link validation: only render link if URL is valid, never render <|Title> or empty URL
-        if (url && isValidHttpUrl(url)) {
-            lines.push(`🔗 <${url}|Xem nguồn>`);
-        }
-
-        lines.push('');
-        lines.push(summary);
-
-        // Why It Matters
-        if (item.whyItMattersVi) {
-            lines.push('');
-            lines.push('💡 Vì sao đáng chú ý');
-            lines.push(item.whyItMattersVi);
-        }
-
-        // Evaluation
-        lines.push('');
-        lines.push('📊 Đánh giá');
-        const impactLabel = this.formatImpactLabel(item.impactScore);
-        lines.push(`• Ảnh hưởng: ${item.impactScore}/100 — ${impactLabel}`);
-
-        const credScore = item.rankingBreakdown?.credibilityScore ?? item.primaryEvent.source.credibilityScore;
-        const credLabel = this.formatCredibilityLabel(credScore);
-        lines.push(`• Độ tin cậy: ${credLabel}`);
-
-        const verificationLabel = this.formatVerificationLabel(item.verificationStatus);
-        lines.push(`• Xác minh: ${verificationLabel}`);
-
-        // Related tokens & entities
-        const related = this.buildRelatedTags(item);
-        if (related.length > 0) {
-            lines.push(`• Liên quan: ${related.join(' • ')}`);
-        }
-
-        if (item.wasCriticalAlerted) {
-            lines.push('• Trạng thái: [Đã phát cảnh báo khẩn cấp trước đó]');
-        }
-
-        return lines.join('\n');
-    }
-
-    private buildRelatedTags(item: AggregatedMarketEvent): string[] {
-        const tags: string[] = [];
-        for (const token of item.tokens) {
-            if (token && !tags.includes(token)) {
-                tags.push(token);
-            }
-        }
-        for (const topic of item.topics) {
-            const vnTopic = this.formatTopicLabel(topic);
-            if (vnTopic && !tags.includes(vnTopic)) {
-                tags.push(vnTopic);
-            }
-        }
-        if (tags.length === 0 && item.category) {
-            tags.push(item.category);
-        }
-        return tags.slice(0, 4);
     }
 
     formatImpactLabel(score: number): string {
@@ -246,7 +284,6 @@ export class CryptoDigestFormatterService {
         if (!items || items.length === 0) {
             return 50;
         }
-        // Weighted average with slight bonus for multiple high-impact items
         const sum = items.reduce((acc, item) => acc + item.impactScore, 0);
         const avg = sum / items.length;
         const highImpactCount = items.filter((i) => i.impactScore >= 75).length;
@@ -256,89 +293,38 @@ export class CryptoDigestFormatterService {
 
     formatOverallImpactLabel(score: number): string {
         if (score >= 75) {
-            return 'Cao';
+            return 'Lớn';
         }
-        if (score >= 55) {
+        if (score >= 60) {
+            return 'Đáng chú ý';
+        }
+        if (score >= 45) {
             return 'Trung bình';
         }
         return 'Thấp';
     }
 
-    private extractTopNarratives(items: AggregatedMarketEvent[]): string[] {
-        const counts = new Map<string, number>();
-        for (const item of items) {
-            if (item.eventType.includes('ETF') || item.topics.includes('ETF')) {
-                counts.set('ETF', (counts.get('ETF') || 0) + 1);
-            }
-            if (item.eventType.includes('CENTRAL_BANK') || item.eventType.includes('MACRO')) {
-                counts.set('Fed / Lãi suất / Thanh khoản', (counts.get('Fed / Lãi suất / Thanh khoản') || 0) + 1);
-            }
-            if (item.eventType.includes('LISTING') || item.topics.includes('LISTING')) {
-                counts.set('Niêm yết sàn', (counts.get('Niêm yết sàn') || 0) + 1);
-            }
-            if (item.eventType.includes('MEME') || item.category === 'MEMECOIN') {
-                counts.set('Meme activity', (counts.get('Meme activity') || 0) + 1);
-            }
-            if (item.eventType.includes('REGULATION') || item.eventType.includes('POLICY')) {
-                counts.set('Chính sách pháp lý', (counts.get('Chính sách pháp lý') || 0) + 1);
-            }
-            if (item.eventType.includes('SECURITY')) {
-                counts.set('Bảo mật & Cảnh báo', (counts.get('Bảo mật & Cảnh báo') || 0) + 1);
-            }
+    formatConfidenceLabel(score: number): string {
+        if (score >= 85) {
+            return 'Cao';
         }
-        return Array.from(counts.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 4)
-            .map(([narrative]) => narrative);
+        if (score >= 70) {
+            return 'Khá';
+        }
+        if (score >= 50) {
+            return 'Trung bình';
+        }
+        return 'Thấp';
     }
 
-    private extractTopTokens(items: AggregatedMarketEvent[]): string[] {
-        const counts = new Map<string, number>();
-        for (const item of items) {
-            for (const token of item.tokens) {
-                const upper = token.toUpperCase();
-                if (['THE', 'NEW', 'ALL', 'USD'].includes(upper)) {
-                    continue;
-                }
-                counts.set(upper, (counts.get(upper) || 0) + 1);
-            }
+    private formatSourceTopic(item: AggregatedMarketEvent): string {
+        if (item.vietnameseTitle) {
+            return item.vietnameseTitle;
         }
-        return Array.from(counts.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 4)
-            .map(([token]) => token);
-    }
-
-    private buildSignalsToWatch(items: AggregatedMarketEvent[]): string[] {
-        const signals: string[] = [];
-
-        const macroItem = items.find((i) => i.eventType.includes('CENTRAL_BANK') || i.eventType.includes('MACRO'));
-        if (macroItem) {
-            signals.push('Thị trường đang hấp thụ dữ liệu vĩ mô mới; theo dõi biến động các cặp BTC và ETH.');
+        if (item.title) {
+            return item.title;
         }
-
-        const etfItem = items.find((i) => i.eventType.includes('ETF'));
-        if (etfItem && etfItem.tokens[0]) {
-            signals.push(`${etfItem.tokens[0]} nhận mức độ chú ý cao sau cập nhật liên quan đến hồ sơ ETF.`);
-        }
-
-        const multiSource = items.find((i) => i.sources.length >= 2 && i.tokens.length > 0);
-        if (multiSource && multiSource.tokens[0]) {
-            signals.push(`${multiSource.tokens[0]} xuất hiện đồng thời trên nhiều nguồn tin xác thực.`);
-        }
-
-        return signals.slice(0, 3);
-    }
-
-    private formatTrendingTokens(tokens: DigestTrendingToken[]): string {
-        const parts: string[] = [];
-        tokens.forEach((t, i) => {
-            const sym = t.symbol.startsWith('$') ? t.symbol : `$${t.symbol}`;
-            const velocity = t.mentionChangePercent ? ` (Tốc độ đề cập 1h: +${t.mentionChangePercent}%)` : '';
-            const sources = t.topSources.length > 0 ? `\nNguồn: ${t.topSources.slice(0, 3).join(', ')}` : '';
-            parts.push(`${i + 1}. ${sym} — Trend Score ${t.trendScore}/100${velocity}${sources}`);
-        });
-        return parts.join('\n\n');
+        return item.category || 'Tin thị trường';
     }
 
     private formatVietnamDate(date: Date): string {
