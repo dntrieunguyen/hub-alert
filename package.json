@@ -1,19 +1,22 @@
 {
-    "name": "rsshub",
+    "name": "hub-alert",
     "version": "1.0.0",
-    "description": "Make RSS Great Again!",
+    "description": "Hub Alert - Personal RSS & Intelligence Alert Collector",
     "keywords": [
-        "RSS"
+        "RSS",
+        "crypto",
+        "intelligence",
+        "alert"
     ],
-    "homepage": "https://github.com/DIYgod/RSSHub#readme",
+    "homepage": "https://github.com/dntrieunguyen/hub-alert#readme",
     "bugs": {
-        "url": "https://github.com/DIYgod/RSSHub/issues"
+        "url": "https://github.com/dntrieunguyen/hub-alert/issues"
     },
     "license": "AGPL-3.0",
-    "author": "DIYgod",
+    "author": "dntrieunguyen",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/DIYgod/RSSHub.git"
+        "url": "git+https://github.com/dntrieunguyen/hub-alert.git"
     },
     "files": [
         "dist-lib"

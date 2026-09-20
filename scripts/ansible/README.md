@@ -1,6 +1,6 @@
 # Readme
 
-Ansible playbook to deploy [RSSHub](https://github.com/DIYgod/RSSHub) on bare-metal with Redis, browserless and Caddy 2
+Ansible playbook to deploy [Hub Alert](https://github.com/dntrieunguyen/hub-alert) on bare-metal with Redis, browserless and Caddy 2
 
 Requires sudo permission
 

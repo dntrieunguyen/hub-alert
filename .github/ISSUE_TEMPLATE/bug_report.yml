@@ -1,0 +1,32 @@
+name: 🐛 Bug Report
+description: Report a bug or issue in Hub Alert
+labels: ['bug']
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue in Hub Alert! Please provide details to help reproduce and resolve it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior (e.g. Route URL, Collector job, etc.).
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Please copy and paste any relevant logs here.
+      render: shell

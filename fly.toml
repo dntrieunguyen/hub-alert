@@ -1,4 +1,4 @@
-app = "rsshub"
+app = "hub-alert"
 
 [http_service]
 internal_port = 1200

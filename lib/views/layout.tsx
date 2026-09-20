@@ -3,7 +3,7 @@ import type { FC } from 'hono/jsx';
 export const Layout: FC = (props) => (
     <html>
         <head>
-            <title>Welcome to RSSHub!</title>
+            <title>Hub Alert - Personal RSS & Intelligence</title>
             <meta name="color-scheme" content="light dark" />
             <script src="https://cdn.tailwindcss.com"></script>
             <style>

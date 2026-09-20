@@ -6,7 +6,7 @@ services:
         build:
             context: .
             dockerfile: Dockerfile
-        image: rsshub:local
+        image: hub-alert:local
         restart: always
         ports:
             - '1200:1200'

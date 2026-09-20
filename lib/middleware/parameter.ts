@@ -69,7 +69,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
     const data: Data = ctx.get('data');
     if (data) {
         if ((!data.item || data.item.length === 0) && !data.allowEmpty) {
-            throw new Error('this route is empty, please check the original site or <a href="https://github.com/DIYgod/RSSHub/issues/new/choose">create an issue</a>');
+            throw new Error('this route is empty, please check the original site or <a href="https://github.com/dntrieunguyen/hub-alert/issues/new">create an issue</a>');
         }
 
         // fix allowEmpty

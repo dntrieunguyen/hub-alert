@@ -1,90 +1,160 @@
+# Hub Alert
+
 <p align="center">
-<img src="https://docs.rsshub.app/img/logo.png" alt="RSSHub" width="100">
+  <strong>Personal RSS & Intelligence Alert Collector</strong>
 </p>
-<h1 align="center">RSSHub</h1>
 
-> 🧡 Everything is RSSible
+<p align="center">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License">
+  <img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg" alt="Node Version">
+  <img src="https://img.shields.io/badge/typescript-%5E5.0-blue.svg" alt="TypeScript">
+  <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
+</p>
 
-[![](https://img.shields.io/badge/dynamic/json?url=https://rsshub-analytics.diygod.workers.dev/&query=requests&color=F38020&label=requests&logo=cloudflare&style=flat-square&suffix=/month)](https://rsshub.app)
-[![docker publish](https://img.shields.io/docker/pulls/diygod/rsshub?label=docker%20pulls&logo=docker&style=flat-square)](https://hub.docker.com/r/diygod/rsshub)
-[![npm publish](https://img.shields.io/npm/dt/rsshub?label=npm%20downloads&logo=npm&style=flat-square)](https://www.npmjs.com/package/rsshub)
-[![test](https://img.shields.io/github/actions/workflow/status/DIYgod/RSSHub/test.yml?branch=master&label=test&logo=github&style=flat-square)](https://github.com/DIYgod/RSSHub/actions/workflows/test.yml?query=event%3Apush+branch%3Amaster)
-[![Test coverage](https://img.shields.io/codecov/c/github/DIYgod/RSSHub.svg?style=flat-square&logo=codecov)](https://app.codecov.io/gh/DIYgod/RSSHub/branch/master)
-[![Visitors](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2FDIYgod%2FRSSHub&label=RSS+lovers&icon=rss-fill&color=%23ff752e)](https://github.com/DIYgod/RSSHub)
+---
 
-[![Telegram group](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.swo.moe%2Fstats%2Ftelegram%2Frsshub&query=count&color=2CA5E0&label=Telegram%20Group&logo=telegram&cacheSeconds=3600&style=flat-square)](https://t.me/rsshub) [![Telegram channel](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.swo.moe%2Fstats%2Ftelegram%2FawesomeRSSHub&query=count&color=2CA5E0&label=Telegram%20Channel&logo=telegram&cacheSeconds=3600&style=flat-square)](https://t.me/awesomeRSSHub) [![X (Twitter)](https://img.shields.io/badge/any_text-Follow-blue?color=2CA5E0&label=Twitter&logo=X&cacheSeconds=3600&style=flat-square)](https://x.com/intent/follow?screen_name=_RSSHub)
+## Giới thiệu (Overview)
 
-<table>
-<tr>
-<td align="center" valign="top" width="50%">
-<a href="https://folo.is/"><img src="https://github.com/user-attachments/assets/68c66528-8c79-4a8a-8e43-ade7d936ab80" alt="Folo" width="419"></a>
-<br>
-RSSHub pairs especially well with <a href="https://folo.is/">Folo</a>, an AI RSS reader for feed discovery and modern reading workflows. The project is also open source on <a href="https://github.com/RSSNext/Folo">GitHub</a>.
-</td>
-<td align="center" valign="top" width="50%">
-<a href="https://stardesk.onelink.me/p0R7/1v2u6fld"><img src="https://github.com/user-attachments/assets/f23cb580-ab92-46cb-8b5b-277fc8933775" alt="StarDesk" width="419"></a>
-<br>
-RSSHub keeps me informed, and <a href="https://stardesk.onelink.me/p0R7/1v2u6fld">StarDesk</a> lets me fix routes or feeds remotely, even run terminal commands from my phone. It’s fast, convenient, and free.
-</td>
-</tr>
-<tr>
-<td align="center" valign="top" width="50%">
-<a href="https://www.rapidproxy.io/?ref=rsshub"><img src="https://github.com/user-attachments/assets/23b68f68-959c-4176-aa6c-ff3b2e4ebfdf" alt="RapidProxy" width="419"></a>
-<br>
-<a href="https://www.rapidproxy.io/?ref=rsshub">RapidProxy</a> offers reliable residential proxies for scraping and global data access, with 90M+ IPs across 200+ countries. Traffic never expires, starting at just $0.55/GB. <a href="https://www.rapidproxy.io/?ref=rsshub">try free now</a>
-</td>
-<td width="50%"></td>
-</tr>
-</table>
+**Hub Alert** là nền tảng cá nhân tổng hợp tin tức và phát hiện cảnh báo thị trường theo thời gian thực (Real-time Market & Intelligence Alert Platform). Được phát triển mở rộng trên nền tảng engine RSSHub, Hub Alert tích hợp sâu hệ sinh thái **Collector & Intelligence** để tự động cào dữ liệu, phân tích thông minh qua DeepSeek AI, chấm điểm mức độ ảnh hưởng (Impact Scoring), phát hiện xu hướng và phát cảnh báo trực tiếp đến các kênh chat (Google Chat, Telegram).
 
-## Introduction
+---
 
-RSSHub is the world's largest RSS network, consisting of over 5,000 global instances.
+## Tính năng nổi bật (Key Features)
 
-RSSHub delivers millions of contents aggregated from all kinds of sources, our vibrant open source community is ensuring the deliver of RSSHub's new routes, new features and bug fixes.
+### 1. Nguồn tin tức phong phú (Modular RSS Feeds)
+- Tận dụng hệ thống routing mạnh mẽ hỗ trợ hàng ngàn nguồn tin, mạng xã hội (Twitter/X, Telegram, Reddit, GitHub, Báo chí tài chính, Crypto news...).
+- Cơ chế caching linh hoạt (Memory, Redis) giúp tiết kiệm băng thông và tối ưu hiệu năng.
 
-[Documentation](https://docs.rsshub.app) | [Folo](https://folo.is/) | [Telegram Group](https://t.me/rsshub) | [Telegram Channel](https://t.me/awesomeRSSHub) | [X (Twitter)](https://x.com/intent/follow?screen_name=_RSSHub)
+### 2. Bộ xử lý thông minh (Intelligence Collector - `lib/collector`)
+- **Automated Scheduling**: Tự động kích hoạt chu kỳ cào tin định kỳ (mặc định mỗi 15 phút hoặc tùy chỉnh cron).
+- **DeepSeek AI Analysis**: Tự động phân tích nội dung bài viết, tóm tắt ý chính và đánh giá tác động thị trường.
+- **Crypto Digest Formatter**: Định dạng bản tin tổng hợp thị trường tiền điện tử chuyên sâu, kèm phân tích xu hướng.
+- **Impact Scoring (0 - 100)**: Tự động chấm điểm mức độ quan trọng để chỉ phát cảnh báo với các tin tức thực sự giá trị (ngưỡng tùy chỉnh).
+- **Deduplication Engine**: Lọc trùng lặp thông minh qua mã băm và độ tương đồng nội dung, loại bỏ tin rác.
+- **Trend Detection**: Nhận diện các chủ đề nóng và token/dự án đang được thảo luận nhiều nhất.
 
-## Related Projects
+### 3. Đa kênh thông báo (Multi-channel Notifications)
+- **Google Chat Webhook**: Gửi các thẻ thông báo (Interactive Cards) được định dạng chuyên nghiệp với điểm số tác động, nhãn phân loại và tóm tắt AI.
+- **Telegram Bot**: Hỗ trợ đẩy tin tức tức thì về group hoặc channel riêng.
 
-- [Folo](https://folo.is/) | An AI RSS reader that works especially well with RSSHub. Source code: [GitHub](https://github.com/RSSNext/Folo).
-- [RSSHub Radar](https://github.com/DIYgod/RSSHub-Radar) | A browser extension that can help you quickly discover and subscribe to the RSS and RSSHub of current websites.
-- [RSSBud](https://github.com/Cay-Zhang/RSSBud) | RSSHub Radar for iOS platform, designed specifically for mobile ecosystem optimization.
-- [RSSAid](https://github.com/LeetaoGoooo/RSSAid) | RSSHub Radar for Android platform built with Flutter.
-- [DocSearch](https://github.com/Fatpandac/DocSearch) | Link RSSHub DocSearch into Raycast.
-- [Awesome RSSHub Routes](https://github.com/JackyST0/awesome-rsshub-routes) | Curated list of RSS feeds and RSSHub routes.
+---
 
-## Contribute
+## Kiến trúc hệ thống (Architecture)
 
-We welcome all pull requests. Suggestions and feedback are also welcomed [here](https://github.com/DIYgod/RSSHub/issues).
+```
+[RSS Sources / Web Scraping]
+          │
+          ▼
+    [Hub Alert Engine]
+          │
+          ├─► [Cache Layer: Redis / Memory]
+          │
+          └─► [Intelligence Collector (`lib/collector`)]
+                    │
+                    ├─► Deduplication (Lọc trùng lặp)
+                    ├─► AI Analysis & Crypto Digest (DeepSeek)
+                    ├─► Impact Scoring (Chấm điểm tác động)
+                    └─► Dispatcher ──► [Google Chat / Telegram]
+```
 
-Refer to [Quick Start](https://docs.rsshub.app/joinus/)
+---
 
-## Deployment
+## Bắt đầu nhanh (Quick Start)
 
-Deploy RSSHub with a single click on Hostinger – pre-configured and ready to run
+### Yêu cầu hệ thống (Prerequisites)
+- **Node.js**: >= 20.0.0
+- **Package Manager**: `pnpm` (khuyến nghị)
+- **Docker & Docker Compose** (nếu triển khai qua container)
+- **Redis** (tùy chọn, khuyến nghị cho môi trường production)
 
-[![Deploy on Hostinger](https://assets.hostinger.com/vps/deploy.svg)](https://www.hostg.xyz/aff_c?offer_id=48&aff_id=244128&url_id=6824)
+---
 
-Refer to [Deployment](https://docs.rsshub.app/deploy/)
+### 1. Cấu hình môi trường (.env)
 
-## Special Thanks
+Sao chép file `.env.example` thành `.env`:
 
-<div align="center">
+```bash
+cp .env.example .env
+```
 
-[![](https://opencollective.com/RSSHub/contributors.svg?width=890)](https://github.com/DIYgod/RSSHub/graphs/contributors)
+Các biến môi trường quan trọng:
 
-Logo designer [sheldonrrr](https://dribbble.com/sheldonrrr)
+```ini
+# Cấu hình Server
+NODE_ENV=production
+PORT=1200
+CACHE_TYPE=redis
+REDIS_URL=redis://localhost:6379
 
-[![](https://raw.githubusercontent.com/DIYgod/sponsors/main/sponsors.simple.svg)](https://github.com/DIYgod/sponsors)
+# Cấu hình Collector & Intelligence
+COLLECTOR_AUTO_START=true
+COLLECTOR_CRON="*/15 * * * *"
+RSSHUB_BASE_URL=http://localhost:1200
 
-<a href="https://www.cloudflare.com" target="_blank"><img height="50px" src="https://i.imgur.com/7Ph27Fq.png"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.netlify.com" target="_blank"><img height="40px" src="https://i.imgur.com/cU01915.png"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://1password.com" target="_blank"><img height="40px" src="https://i.imgur.com/a2XjflO.png"></a>
+# Google Chat Webhook Alert
+GOOGLE_CHAT_ENABLED=true
+GOOGLE_CHAT_WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/.../messages?key=...
+GOOGLE_CHAT_MIN_IMPACT_SCORE=80
 
-</div>
+# DeepSeek AI Integration
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+```
 
-## Author
+---
 
-**RSSHub** © [DIYgod](https://github.com/DIYgod), Released under the [AGPL-3.0](./LICENSE) License.<br>
-Authored and maintained by DIYgod with help from contributors ([list](https://github.com/DIYgod/RSSHub/contributors)).
+### 2. Chạy với Docker Compose (Khuyến nghị)
 
-> Blog [@DIYgod](https://diygod.cc) · GitHub [@DIYgod](https://github.com/DIYgod) · X (Twitter) [@DIYgod](https://x.com/DIYgod) · Telegram Channel [@awesomeDIYgod](https://t.me/awesomeDIYgod)
+```bash
+# Khởi động toàn bộ stack (Hub Alert, Redis, Browserless)
+docker compose up -d
+
+# Xem log hoạt động
+docker compose logs -f rsshub
+```
+
+Truy cập giao diện tại: `http://localhost:1200`
+
+---
+
+### 3. Chạy trực tiếp trên Local (Development)
+
+```bash
+# Cài đặt dependencies
+pnpm install
+
+# Khởi chạy chế độ phát triển (watch mode)
+pnpm dev
+```
+
+---
+
+## Danh sách API của Collector
+
+Hệ thống cung cấp các REST API endpoints để quản lý và kích hoạt Collector thủ công:
+
+| Phương thức | Đường dẫn | Mô tả |
+|---|---|---|
+| `GET` | `/api/collector/status` | Lấy trạng thái hiện tại, số lượng tin đã xử lý và số liệu thống kê |
+| `POST` | `/api/collector/start` | Khởi động cron job thu thập tin tức |
+| `POST` | `/api/collector/stop` | Tạm dừng cron job thu thập |
+| `POST` | `/api/collector/run-now` | Kích hoạt ngay lập tức một chu kỳ cào tin và phân tích |
+| `POST` | `/api/collector/digest` | Tạo và gửi bản tin tổng hợp Crypto Digest thủ công |
+
+---
+
+## Triển khai (Deployment)
+
+Hub Alert hỗ trợ đa dạng nền tảng triển khai:
+- **Docker Container**: Triển khai trên bất kỳ máy chủ VPS hoặc cloud provider nào qua file `Dockerfile` và `docker-compose.yml`.
+- **Render / Railway**: Sử dụng Docker build service với cổng `1200`.
+- **Cloudflare Workers**: Hỗ trợ build dạng serverless worker (`pnpm run worker-build`).
+
+---
+
+## Tác quyền & Giấy phép (License & Credits)
+
+- Dự án thuộc quyền sở hữu cá nhân của **[@dntrieunguyen](https://github.com/dntrieunguyen)**.
+- Xây dựng và kế thừa kiến trúc từ dự án mã nguồn mở RSSHub.
+- Phát hành dưới giấy phép [AGPL-3.0 License](./LICENSE).

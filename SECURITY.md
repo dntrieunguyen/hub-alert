@@ -2,8 +2,8 @@
 
 ## Supported Version
 
-Latest commits in master branch
+Latest commits in main branch
 
 ## Reporting a Vulnerability
 
-If you believe you have found a security vulnerability in RSSHub, please let us know right away, you can [open a draft security advisory](https://github.com/DIYgod/RSSHub/security/advisories/new) or email us at [i@diygod.me](mailto:i@diygod.me). We will investigate all legitimate reports and do our best to quickly fix the problem.
+If you believe you have found a security vulnerability in this project, please open a security advisory or issue at [https://github.com/dntrieunguyen/hub-alert/issues](https://github.com/dntrieunguyen/hub-alert/issues).

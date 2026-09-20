@@ -1,4 +1,4 @@
-name = "rsshub"
+name = "hub-alert"
 main = "dist-worker/worker.mjs"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["global_fetch_strictly_public"]
