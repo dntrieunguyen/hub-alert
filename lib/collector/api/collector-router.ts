@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 
 import type { CollectorService } from '../collector.service';
+import type { CryptoDigestScheduler, CryptoDigestService } from '../digest';
+import type { AiNewsAnalyzer } from '../intelligence/ai-news-analyzer.interface';
+import type { HotNewsService } from '../intelligence/hot-news/hot-news.service';
 import type { NotificationModule } from '../notifications/notification.module';
 import type { FeedSchedulerService } from '../scheduler/feed-scheduler.service';
 import type { FeedSourceService } from '../sources/feed-source.service';
@@ -16,8 +19,12 @@ export const createCollectorRouter = (dependencies: {
     collectorService: CollectorService;
     scheduler?: FeedSchedulerService;
     notificationModule?: NotificationModule;
+    digestService?: CryptoDigestService;
+    digestScheduler?: CryptoDigestScheduler;
+    aiAnalyzer?: AiNewsAnalyzer;
+    hotNewsService?: HotNewsService;
 }) => {
-    const { repository, trendService, sourceService, collectorService, scheduler, notificationModule } = dependencies;
+    const { repository, trendService, sourceService, collectorService, scheduler, notificationModule, digestService, digestScheduler, aiAnalyzer, hotNewsService } = dependencies;
     const router = new Hono();
 
     // Helper to format item to requested response shape
@@ -299,6 +306,100 @@ export const createCollectorRouter = (dependencies: {
             return c.json({ googleChat: { enabled: false, configured: false } });
         }
         return c.json(notificationModule.getHealthStatus());
+    });
+
+    /**
+     * POST /digest/trigger
+     * Manually triggers Top 10 digest generation & send
+     * Supports ?dryRun=true or JSON body { dryRun: boolean, forceSend: boolean }
+     */
+    router.post('/digest/trigger', async (c) => {
+        const activeDigest = digestService || notificationModule?.digestService;
+        if (!activeDigest) {
+            return c.json({ error: 'Crypto digest service not available' }, 503);
+        }
+
+        const dryRunQuery = c.req.query('dryRun');
+        let body: any = {};
+        try {
+            body = await c.req.json();
+        } catch {
+            // Optional body
+        }
+
+        const dryRun = dryRunQuery === 'true' || dryRunQuery === '1' || Boolean(body.dryRun);
+        const forceSend = Boolean(body.forceSend);
+
+        const result = await activeDigest.generateAndSendDigest({ dryRun, forceSend });
+        if (!result.success && result.error) {
+            return c.json(result, 500);
+        }
+        return c.json(result);
+    });
+
+    /**
+     * GET /digest/preview
+     * Preview current Top 10 digest without dispatching to Google Chat
+     */
+    router.get('/digest/preview', async (c) => {
+        const activeDigest = digestService || notificationModule?.digestService;
+        if (!activeDigest) {
+            return c.json({ error: 'Crypto digest service not available' }, 503);
+        }
+
+        const result = await activeDigest.generateAndSendDigest({ dryRun: true });
+        return c.json(result);
+    });
+
+    /**
+     * GET /digest/history
+     * Returns history of digest deliveries
+     */
+    router.get('/digest/history', async (c) => {
+        const activeDigest = digestService || notificationModule?.digestService;
+        if (!activeDigest) {
+            return c.json({ error: 'Crypto digest service not available' }, 503);
+        }
+
+        const limitStr = c.req.query('limit');
+        const limit = limitStr ? Number.parseInt(limitStr, 10) : 20;
+        const history = await activeDigest.deliveryRepository.getDeliveryHistory(limit);
+        return c.json({ history });
+    });
+
+    /**
+     * GET /digest/status
+     * Returns current digest scheduler status and configuration
+     */
+    router.get('/digest/status', (c) => {
+        const activeDigest = digestService || notificationModule?.digestService;
+        const activeScheduler = digestScheduler || notificationModule?.digestScheduler;
+
+        return c.json({
+            config: activeDigest?.configService.getConfig(),
+            scheduler: activeScheduler?.getStatus(),
+        });
+    });
+
+    /**
+     * GET /ai/status
+     * Returns AI Analyzer & Hot News configuration status (sanitized)
+     */
+    router.get('/ai/status', (c) => {
+        const analyzerConfig = (aiAnalyzer as any)?.getConfig?.();
+        return c.json({
+            ai: {
+                provider: aiAnalyzer?.providerName || 'none',
+                enabled: analyzerConfig?.enabled ?? false,
+                model: analyzerConfig?.model,
+                language: analyzerConfig?.language,
+                maxCandidates: analyzerConfig?.maxCandidates,
+                hotNewsEnabled: analyzerConfig?.hotNewsEnabled,
+                hotNewsMinCredibility: analyzerConfig?.hotNewsMinCredibility,
+                hotNewsMinImpactScore: analyzerConfig?.hotNewsMinImpactScore,
+                hotNewsMinConfidence: analyzerConfig?.hotNewsMinConfidence,
+            },
+        });
     });
 
     return router;

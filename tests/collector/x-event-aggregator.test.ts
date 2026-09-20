@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { SourceTier, XSourceType } from '@/collector/types';
-import { XEventAggregatorService } from '@/collector/x';
+import { SourceTier, XSourceType } from '../../lib/collector/types';
+import { XEventAggregatorService } from '../../lib/collector/x';
 
 describe('XEventAggregatorService', () => {
     it('should aggregate mentions across exchanges and compute consensus and trend score', () => {

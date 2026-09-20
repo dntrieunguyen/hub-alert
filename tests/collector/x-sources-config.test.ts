@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SourceTier, XSourceType } from '@/collector/types';
+import { SourceTier, XSourceType } from '../../lib/collector/types';
 import {
     buildXFeedSources,
     CRYPTO_PROJECT_X_SOURCES,
@@ -10,7 +10,7 @@ import {
     INITIAL_X_SOURCES,
     PUBLIC_OFFICIALS_ROLE_REGISTRY,
     PUBLIC_OFFICIALS_X_SOURCES,
-} from '@/collector/x';
+} from '../../lib/collector/x';
 
 describe('X Intelligence Sources Configuration', () => {
     it('should include all required macro and government sources', () => {

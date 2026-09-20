@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { VerificationStatus, XEventType, XSourceType } from '@/collector/types';
+import { VerificationStatus, XEventType, XSourceType } from '../../lib/collector/types';
 import {
     PUBLIC_OFFICIALS_ROLE_REGISTRY,
     XEventDetectorService,
     type XSource,
     XVerificationService,
-} from '@/collector/x';
+} from '../../lib/collector/x';
 
 describe('X Verification and Event Detection', () => {
     const verifier = new XVerificationService(PUBLIC_OFFICIALS_ROLE_REGISTRY);

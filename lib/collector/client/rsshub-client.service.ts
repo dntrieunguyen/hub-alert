@@ -24,7 +24,7 @@ export class RSSHubClientService {
         try {
             // First fetch raw XML via ofetch to get accurate HTTP status codes and headers
             const xmlContent = await ofetch<string>(source.rssUrl, {
-                responseType: 'text',
+                responseType: 'text' as any,
                 headers: {
                     Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
                 },

@@ -125,7 +125,7 @@ export class FeedSchedulerService {
         // Global Redis / Cache claim if supported
         try {
             const lockKey = `rss-feed-lock:${sourceId}`;
-            const claimed = await cache.claim(lockKey, Math.min(ttlSeconds, 300));
+            const claimed = typeof (cache as any).claim === 'function' ? await (cache as any).claim(lockKey, Math.min(ttlSeconds, 300)) : true;
             if (claimed) {
                 this.activeLocks.add(sourceId);
                 return true;

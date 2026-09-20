@@ -51,6 +51,7 @@ const collector = createCollectorModule();
 
 if (process.env.NODE_ENV !== 'test' && process.env.COLLECTOR_AUTO_START !== 'false') {
     collector.scheduler.start();
+    collector.digestScheduler.start();
 }
 
 app.route('/', registry);

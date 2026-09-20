@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { XPostNormalizerService } from '@/collector/x';
+import { XPostNormalizerService } from '../../lib/collector/x';
 
 describe('XPostNormalizerService', () => {
     const normalizer = new XPostNormalizerService();

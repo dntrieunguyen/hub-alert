@@ -67,7 +67,8 @@ export class FeedNormalizerService {
     normalizeItem(raw: RawRssItem, source: FeedSource, fingerprint: string): CryptoFeedItem {
         const title = this.cleanText(raw.title || 'Untitled');
         const url = this.normalizeUrl(raw.link || '');
-        const summary = this.cleanText(raw.summary || raw.contentSnippet || raw.description || '');
+        const desc = typeof raw.description === 'string' ? raw.description : '';
+        const summary = this.cleanText(raw.summary || raw.contentSnippet || desc || '');
         const content = typeof raw.content === 'string' ? raw.content : (raw['content:encoded'] as string) || summary;
         const author = raw.author || raw.creator || undefined;
         const publishedAt = this.parsePublishedDate(raw.isoDate || raw.pubDate);

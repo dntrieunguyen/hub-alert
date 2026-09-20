@@ -175,7 +175,17 @@ export class CollectorService {
 
                 // Record mentions into rolling aggregator
                 for (const token of item.tokens) {
-                    this.xEventAggregator.recordMention(token, source, item.url, detectedEvent.impactScore, item.publishedAt);
+                    this.xEventAggregator.recordMention(
+                        token,
+                        {
+                            handle: source.handle || source.id,
+                            displayName: source.name,
+                            sourceType: (source.xSourceType as any) || 'GENERAL',
+                        },
+                        item.url,
+                        detectedEvent.impactScore,
+                        item.publishedAt
+                    );
                 }
             }
 
