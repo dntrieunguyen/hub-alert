@@ -4,11 +4,15 @@ import type { MarketEvent } from '../../notifications/types';
 import type { AggregatedMarketEvent, MarketIntelligenceAnalysis } from '../../digest/types';
 import type { AiNewsAnalyzer } from '../ai-news-analyzer.interface';
 import { InMemoryAiAnalysisCache } from '../cache/in-memory-ai-analysis-cache';
-import type { AiAnalyzerConfig, AiInputEvent, AiNewsAnalysis } from '../types';
+import type { AiAnalyzerConfig, AiInputEvent, AiNewsAnalysis, LatestNewsAnalysis } from '../types';
 import { buildDeepSeekUserPrompt, DEEPSEEK_SYSTEM_PROMPT } from './deepseek-prompt';
 import { DeepSeekValidator } from './deepseek-validator';
 import { buildMarketIntelligenceUserPrompt, DEEPSEEK_MARKET_INTELLIGENCE_SYSTEM_PROMPT } from './deepseek-market-intelligence-prompt';
 import { DeepSeekMarketIntelligenceValidator } from './deepseek-market-intelligence-validator';
+import { buildDeepSeekLatestUserPrompt, DEEPSEEK_LATEST_SYSTEM_PROMPT } from './deepseek-latest-prompt';
+import { DeepSeekLatestValidator } from './deepseek-latest-validator';
+import type { ClusteredMarketEvent } from '../latest/latest-event-clustering.service';
+
 
 export class DeepSeekNewsAnalyzer implements AiNewsAnalyzer {
     readonly providerName = 'deepseek';
@@ -215,6 +219,90 @@ export class DeepSeekNewsAnalyzer implements AiNewsAnalyzer {
             return null;
         }
     }
+
+    /**
+     * Analyzes clustered market events specifically for the Latest Market Intelligence endpoint
+     */
+    async analyzeLatestNews(events: ClusteredMarketEvent[]): Promise<Map<string, LatestNewsAnalysis>> {
+        const resultMap = new Map<string, LatestNewsAnalysis>();
+
+        if (!events || events.length === 0) {
+            return resultMap;
+        }
+
+        const eventMap = new Map<string, ClusteredMarketEvent>();
+        for (const e of events) {
+            eventMap.set(e.id, e);
+        }
+
+        if (!this.config.enabled || !this.config.apiKey) {
+            logger.debug('[ai.latest.no_api_key] DeepSeek disabled or missing key, using deterministic fallback');
+            for (const e of events) {
+                const fallback = DeepSeekLatestValidator.createDeterministicFallback(e);
+                if (fallback) {
+                    resultMap.set(e.id, fallback);
+                }
+            }
+            return resultMap;
+        }
+
+        try {
+            const url = 'https://api.deepseek.com/chat/completions';
+            const userPrompt = buildDeepSeekLatestUserPrompt(events);
+
+            const response = await this.fetchFn(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${this.config.apiKey}`,
+                },
+                body: {
+                    model: this.config.model,
+                    messages: [
+                        { role: 'system', content: DEEPSEEK_LATEST_SYSTEM_PROMPT },
+                        { role: 'user', content: userPrompt },
+                    ],
+                    response_format: { type: 'json_object' },
+                    temperature: 0.2,
+                },
+                timeout: this.config.timeoutMs || 30000,
+            });
+
+            const content = response?.choices?.[0]?.message?.content;
+            if (!content) {
+                throw new Error('Empty response from DeepSeek API');
+            }
+
+            const parsed = typeof content === 'string' ? JSON.parse(content) : content;
+            const validatedMap = DeepSeekLatestValidator.validateAnalyses(parsed, eventMap);
+
+            for (const [id, analysis] of validatedMap.entries()) {
+                resultMap.set(id, analysis);
+            }
+
+            // For any event that wasn't successfully analyzed, provide fallback
+            for (const e of events) {
+                if (!resultMap.has(e.id)) {
+                    const fallback = DeepSeekLatestValidator.createDeterministicFallback(e);
+                    if (fallback) {
+                        resultMap.set(e.id, fallback);
+                    }
+                }
+            }
+        } catch (error: any) {
+            logger.error(`[ai.latest.failed] DeepSeek latest news analysis failed: ${error.message}`);
+            // Fallback for all events
+            for (const e of events) {
+                const fallback = DeepSeekLatestValidator.createDeterministicFallback(e);
+                if (fallback) {
+                    resultMap.set(e.id, fallback);
+                }
+            }
+        }
+
+        return resultMap;
+    }
+
 
     private async executeCallWithRetry(inputs: AiInputEvent[]): Promise<any> {
         const url = 'https://api.deepseek.com/chat/completions';

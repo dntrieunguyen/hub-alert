@@ -130,6 +130,28 @@ export interface CryptoFeedItem {
     handle?: string;
     xSourceType?: XSourceType;
     xMetadata?: XPostMetadata;
+
+    // Raw source fields (preserved, never overwritten)
+    originalTitle?: string;
+    originalSummary?: string;
+    originalContent?: string;
+    originalLanguage?: string;
+
+    // AI Market Intelligence fields
+    aiTitleVi?: string;
+    aiSummaryVi?: string;
+    aiAnalysisVi?: string;
+    aiWhyItMattersVi?: string;
+    aiMarketImpactVi?: string;
+    aiInformationValueScore?: number;
+    aiMarketRelevanceScore?: number;
+    aiImpactScore?: number;
+    aiConfidence?: number;
+    aiSignalStrength?: 'HIGH' | 'MEDIUM' | 'LOW' | 'NOISE';
+    aiAnalyzedAt?: Date;
+    aiProvider?: string;
+    aiModel?: string;
+    aiAnalysisVersion?: number;
 }
 
 export interface MemeTrend {

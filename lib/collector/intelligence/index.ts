@@ -8,3 +8,5 @@ export * from './cache/in-memory-ai-analysis-cache';
 export * from './hot-news/hot-news-policy.service';
 export * from './hot-news/hot-news-formatter';
 export * from './hot-news/hot-news.service';
+export * from './latest';
+

@@ -429,6 +429,6 @@ describe('Top 10 Scheduled Crypto Intelligence Digest Refactor (35 Rules)', () =
 
         const json = await res.json();
         expect(json).toHaveProperty('items');
-        expect(json).toHaveProperty('notification');
+        expect(json).toHaveProperty('summary');
     });
 });

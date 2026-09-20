@@ -11,6 +11,7 @@ import {
     AiProviderFactory,
     HotNewsPolicyService,
     HotNewsService,
+    LatestMarketIntelligenceService,
 } from './intelligence';
 import { FeedNormalizerService } from './normalize/feed-normalizer.service';
 import { NotificationModule } from './notifications/notification.module';
@@ -61,8 +62,10 @@ export interface CollectorModule {
     notificationModule: NotificationModule;
     aiAnalyzer: AiNewsAnalyzer;
     hotNewsService: HotNewsService;
+    latestIntelligenceService: LatestMarketIntelligenceService;
     router: ReturnType<typeof createCollectorRouter>;
 }
+
 
 export const createCollectorModule = (): CollectorModule => {
     const repository = new InMemoryFeedRepository();
@@ -117,6 +120,14 @@ export const createCollectorModule = (): CollectorModule => {
     // Link digest service to notification module
     notificationModule.setDigestServices(digestService, digestScheduler);
 
+    const latestIntelligenceService = new LatestMarketIntelligenceService({
+        repository,
+        sourceService,
+        collectorService,
+        notificationModule,
+        aiAnalyzer,
+    });
+
     const router = createCollectorRouter({
         repository,
         trendService,
@@ -128,6 +139,7 @@ export const createCollectorModule = (): CollectorModule => {
         digestScheduler,
         aiAnalyzer,
         hotNewsService,
+        latestIntelligenceService,
     });
 
     return {
@@ -141,6 +153,8 @@ export const createCollectorModule = (): CollectorModule => {
         notificationModule,
         aiAnalyzer,
         hotNewsService,
+        latestIntelligenceService,
         router,
     };
 };
+

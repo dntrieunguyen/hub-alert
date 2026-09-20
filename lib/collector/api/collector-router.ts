@@ -4,6 +4,7 @@ import type { CollectorService } from '../collector.service';
 import type { CryptoDigestScheduler, CryptoDigestService } from '../digest';
 import type { AiNewsAnalyzer } from '../intelligence/ai-news-analyzer.interface';
 import type { HotNewsService } from '../intelligence/hot-news/hot-news.service';
+import { LatestMarketIntelligenceService } from '../intelligence/latest/latest-market-intelligence.service';
 import type { NotificationModule } from '../notifications/notification.module';
 import type { FeedSchedulerService } from '../scheduler/feed-scheduler.service';
 import type { FeedSourceService } from '../sources/feed-source.service';
@@ -24,9 +25,11 @@ export const createCollectorRouter = (dependencies: {
     digestScheduler?: CryptoDigestScheduler;
     aiAnalyzer?: AiNewsAnalyzer;
     hotNewsService?: HotNewsService;
+    latestIntelligenceService?: LatestMarketIntelligenceService;
 }) => {
-    const { repository, trendService, sourceService, collectorService, scheduler, notificationModule, digestService, digestScheduler, aiAnalyzer, hotNewsService } = dependencies;
+    const { repository, trendService, sourceService, collectorService, scheduler, notificationModule, digestService, digestScheduler, aiAnalyzer, hotNewsService, latestIntelligenceService } = dependencies;
     const router = new Hono();
+
 
     // Helper to format item to requested response shape
     const formatFeedItem = (item: CryptoFeedItem) => ({
@@ -113,118 +116,74 @@ export const createCollectorRouter = (dependencies: {
         });
     });
 
-    // Helper to format latest items into Google Chat message
-    const formatLatestFeedsMessage = (items: CryptoFeedItem[]): string => {
-        const formatter = notificationModule?.formatter ?? new GoogleChatMessageFormatter();
-        const nowVietnam = formatter.formatVietnamTime(new Date());
-
-        if (items.length === 0) {
-            return `⚡ [HUB ALERT] TIN TỨC MỚI NHẤT (LATEST FEEDS)\n🕒 Thời gian: ${nowVietnam}\n\nHiện chưa có tin tức mới trong hệ thống. Vui lòng thử lại sau.`;
-        }
-
-        const lines: string[] = [
-            `⚡ [HUB ALERT] TIN TỨC MỚI NHẤT (LATEST FEEDS)`,
-            `🕒 Cập nhật: ${nowVietnam}`,
-            `📊 Số lượng tin: ${items.length}`,
-            '',
-            '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        ];
-
-        // Send top 10 items to prevent message exceeding Google Chat character limit
-        const displayItems = items.slice(0, 10);
-
-        displayItems.forEach((item, index) => {
-            const title = item.title || 'Không có tiêu đề';
-            const url = item.url || '#';
-            const source = item.sourceName || 'Unknown';
-            const time = item.publishedAt ? formatter.formatVietnamTime(item.publishedAt) : '';
-            const summary = item.summary
-                ? item.summary.length > 200
-                    ? item.summary.slice(0, 197) + '...'
-                    : item.summary
-                : '';
-            const tokens = item.tokens && item.tokens.length > 0 ? ` | Tokens: ${item.tokens.join(', ')}` : '';
-            const impact = item.impactScore !== undefined ? ` | Tác động: ${item.impactScore}/100` : '';
-
-            lines.push(`${index + 1}. <${url}|${title}>`);
-            if (summary) {
-                lines.push(`> ${summary}`);
-            }
-            lines.push(`🏷️ Nguồn: ${source}${tokens}${impact}${time ? ` | 🕒 ${time}` : ''}`);
-            lines.push('');
+    const activeLatestService =
+        latestIntelligenceService ??
+        new LatestMarketIntelligenceService({
+            repository,
+            sourceService,
+            collectorService,
+            notificationModule,
+            aiAnalyzer,
         });
-
-        if (items.length > 10) {
-            lines.push(`...và còn ${items.length - 10} tin khác.`);
-            lines.push('');
-        }
-
-        lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        lines.push('Dữ liệu tự động phát từ Hub Alert khi gọi API manual.');
-
-        return lines.join('\n').trim();
-    };
 
     /**
      * GET /feeds/latest & GET /latest
-     * When called manually, returns latest items and automatically sends a formatted message to Google Chat
+     * Returns Top N AI-analyzed Market Intelligence items in natural Vietnamese.
+     * Guaranteed NO Google Chat notification side-effect on GET.
+     * Query params:
+     * - limit: number (default 10)
+     * - raw: boolean (default false, returns raw feeds for debug)
+     * - refresh: boolean (default false, forces cache invalidation)
      */
-    const handleLatestFeeds = async (c: any) => {
-        const limit = Math.min(100, Number.parseInt(c.req.query('limit') || '20', 10));
-        const notifyQuery = c.req.query('notify');
-        // By default, automatically send to Google Chat unless explicitly set to 'false' or '0'
-        const shouldNotify = notifyQuery !== 'false' && notifyQuery !== '0';
+    const handleLatestIntelligence = async (c: any) => {
+        const limitStr = c.req.query('limit');
+        const limit = limitStr ? Number.parseInt(limitStr, 10) : 10;
+        const raw = c.req.query('raw') === 'true' || c.req.query('raw') === '1';
+        const forceRefresh = c.req.query('refresh') === 'true' || c.req.query('refresh') === '1';
 
-        let items = await repository.findLatest(limit);
-
-        // If cache has no items yet, attempt to collect from available enabled sources once
-        if (items.length === 0) {
-            const sources = sourceService.getAllSources().filter((s) => s.enabled);
-            if (sources.length > 0) {
-                const sourcesToCollect = sources.slice(0, 3);
-                await Promise.allSettled(sourcesToCollect.map((s) => collectorService.collectAndProcessSource(s)));
-                items = await repository.findLatest(limit);
-            }
-        }
-
-        let notificationStatus: { sent: boolean; message?: string; error?: string } = {
-            sent: false,
-        };
-
-        if (shouldNotify && notificationModule) {
-            if (!notificationModule.configService.isEnabled()) {
-                notificationStatus = {
-                    sent: false,
-                    message: 'Google Chat notification is disabled in configuration (GOOGLE_CHAT_ENABLED=false)',
-                };
-            } else {
-                try {
-                    const message = formatLatestFeedsMessage(items);
-                    await notificationModule.notificationService.sendText(message, {
-                        eventId: `manual_latest_${Date.now()}`,
-                        severity: 'INFO',
-                    });
-                    notificationStatus = {
-                        sent: true,
-                        message: 'Notification sent to Google Chat successfully',
-                    };
-                } catch (err: any) {
-                    notificationStatus = {
-                        sent: false,
-                        error: err.message,
-                    };
-                }
-            }
-        }
-
-        return c.json({
-            items: items.map(formatFeedItem),
-            notification: notificationStatus,
+        const result = await activeLatestService.getLatestIntelligence({
+            limit,
+            raw,
+            forceRefresh,
         });
+
+        return c.json(result);
     };
 
-    router.get('/feeds/latest', handleLatestFeeds);
-    router.get('/latest', handleLatestFeeds);
+    router.get('/feeds/latest', handleLatestIntelligence);
+    router.get('/latest', handleLatestIntelligence);
+
+    /**
+     * GET /feeds/latest/raw & GET /latest/raw
+     * Debugging route returning raw unprocessed database feeds
+     */
+    const handleLatestRaw = async (c: any) => {
+        const limitStr = c.req.query('limit');
+        const limit = limitStr ? Math.min(100, Number.parseInt(limitStr, 10)) : 20;
+        const items = await repository.findLatest(limit);
+        return c.json({
+            items: items.map(formatFeedItem),
+        });
+    };
+    router.get('/feeds/latest/raw', handleLatestRaw);
+    router.get('/latest/raw', handleLatestRaw);
+
+    /**
+     * POST /feeds/latest/notify & POST /latest/notify
+     * Explicit trigger to format and send Latest Market Intelligence to Google Chat
+     */
+    const handleLatestNotify = async (c: any) => {
+        const limitStr = c.req.query('limit');
+        const limit = limitStr ? Number.parseInt(limitStr, 10) : 10;
+        const result = await activeLatestService.sendLatestNotification(limit);
+        if (!result.sent && result.error) {
+            return c.json(result, 500);
+        }
+        return c.json(result);
+    };
+    router.post('/feeds/latest/notify', handleLatestNotify);
+    router.post('/latest/notify', handleLatestNotify);
+
 
     /**
      * GET /feeds/breaking

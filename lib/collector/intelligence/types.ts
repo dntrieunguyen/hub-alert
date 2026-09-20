@@ -82,3 +82,63 @@ export interface AiAnalysisCacheRecord {
     model: string;
     version: number;
 }
+
+export interface LatestNewsAnalysis {
+    eventId: string;
+    include: boolean;
+    titleVi: string;
+    summaryVi: string;
+    analysisVi: string;
+    whyItMattersVi: string;
+    marketImpactVi: string;
+    category: string;
+    affectedAssets: string[];
+    affectedNarratives: string[];
+    informationValueScore: number;
+    marketRelevanceScore: number;
+    aiImpactScore: number;
+    confidence: number;
+    signalStrength: 'HIGH' | 'MEDIUM' | 'LOW' | 'NOISE';
+}
+
+export interface LatestMarketOverview {
+    title?: string;
+    marketOverview: string;
+    overallImpactScore: number;
+    marketState: string;
+    mainNarratives: string[];
+    risks: string[];
+    watchNext: string[];
+}
+
+export interface LatestMarketIntelligenceItem {
+    id: string;
+    title: string;
+    summary: string;
+    analysis: string;
+    whyItMatters: string;
+    marketImpact?: string;
+    source: {
+        id?: string;
+        name: string;
+        tier: string;
+        credibilityScore: number;
+    };
+    marketRelevanceScore: number;
+    impactScore: number;
+    signalStrength: 'HIGH' | 'MEDIUM' | 'LOW' | 'NOISE';
+    affectedAssets: string[];
+    affectedNarratives: string[];
+    publishedAt: string;
+    url: string;
+    originalTitle?: string;
+    originalSummary?: string;
+    originalLanguage?: string;
+}
+
+export interface LatestMarketIntelligenceResponse {
+    generatedAt: string;
+    summary: LatestMarketOverview;
+    items: LatestMarketIntelligenceItem[];
+}
+

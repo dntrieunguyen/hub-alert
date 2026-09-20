@@ -176,7 +176,7 @@ describe('Collector Pipeline & REST API End-to-End', () => {
         expect(tickResult.failed).toBe(0);
     });
 
-    it('should handle GET /feeds/latest and GET /latest and auto send message to Google Chat', async () => {
+    it('should handle GET /feeds/latest and GET /latest as Market Intelligence without sending to Google Chat on GET', async () => {
         const repository = new InMemoryFeedRepository();
         await repository.saveItem({
             id: 'test-item-1',
@@ -187,7 +187,7 @@ describe('Collector Pipeline & REST API End-to-End', () => {
             sourceTier: SourceTier.NEWS,
             category: 'CRYPTO_NEWS',
             title: 'Bitcoin Surges Past $100K in Historic Rally',
-            summary: 'BTC hit a record high today amid massive inflows.',
+            summary: 'BTC hit a record high today amid massive institutional inflows.',
             url: 'https://coindesk.com/btc-100k',
             publishedAt: new Date(),
             collectedAt: new Date(),
@@ -224,30 +224,36 @@ describe('Collector Pipeline & REST API End-to-End', () => {
             notificationModule: mockNotificationModule,
         });
 
-        // 1. Call GET /feeds/latest (auto send to Google Chat)
+        // 1. Call GET /feeds/latest (returns Market Intelligence, DOES NOT auto-send to Google Chat)
         const resLatest = await router.request('/feeds/latest');
         expect(resLatest.status).toBe(200);
         const dataLatest: any = await resLatest.json();
         expect(dataLatest.items).toHaveLength(1);
-        expect(dataLatest.items[0].title).toBe('Bitcoin Surges Past $100K in Historic Rally');
-        expect(dataLatest.notification.sent).toBe(true);
-        expect(sentMessages).toHaveLength(1);
-        expect(sentMessages[0]).toContain('Bitcoin Surges Past $100K in Historic Rally');
-        expect(sentMessages[0]).toContain('https://coindesk.com/btc-100k');
+        expect(dataLatest.items[0]).toHaveProperty('analysis');
+        expect(dataLatest.items[0]).toHaveProperty('whyItMatters');
+        expect(dataLatest).toHaveProperty('summary');
+        expect(sentMessages).toHaveLength(0); // GET MUST NOT SEND GOOGLE CHAT!
 
         // 2. Call GET /latest (alias)
         const resAlias = await router.request('/latest');
         expect(resAlias.status).toBe(200);
         const dataAlias: any = await resAlias.json();
         expect(dataAlias.items).toHaveLength(1);
-        expect(sentMessages).toHaveLength(2);
+        expect(sentMessages).toHaveLength(0); // Still 0
 
-        // 3. Call with notify=false (opt out)
-        const resNoNotify = await router.request('/feeds/latest?notify=false');
-        expect(resNoNotify.status).toBe(200);
-        const dataNoNotify: any = await resNoNotify.json();
-        expect(dataNoNotify.items).toHaveLength(1);
-        expect(dataNoNotify.notification.sent).toBe(false);
-        expect(sentMessages).toHaveLength(2); // no new message sent
+        // 3. Call GET /latest/raw (debug raw feeds)
+        const resRaw = await router.request('/latest/raw');
+        expect(resRaw.status).toBe(200);
+        const dataRaw: any = await resRaw.json();
+        expect(dataRaw.items).toHaveLength(1);
+        expect(dataRaw.items[0].title).toBe('Bitcoin Surges Past $100K in Historic Rally');
+
+        // 4. Call explicit POST /latest/notify (triggers Google Chat dispatch)
+        const resNotify = await router.request('/latest/notify', { method: 'POST' });
+        expect(resNotify.status).toBe(200);
+        const dataNotify: any = await resNotify.json();
+        expect(dataNotify.sent).toBe(true);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toContain('HUB ALERT');
     });
 });
