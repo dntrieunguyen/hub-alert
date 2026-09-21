@@ -105,11 +105,11 @@ export class DeepSeekLatestValidator {
 
         // 6. Assets and Narratives
         const affectedAssets = Array.isArray(raw.affectedAssets)
-            ? Array.from(new Set(raw.affectedAssets.filter((a: any) => typeof a === 'string' && a.trim().length > 0).map((a: string) => a.trim().toUpperCase())))
+            ? Array.from(new Set<string>(raw.affectedAssets.filter((a: any) => typeof a === 'string' && a.trim().length > 0).map((a: string) => a.trim().toUpperCase())))
             : groundTruth.tokens || [];
 
         const affectedNarratives = Array.isArray(raw.affectedNarratives)
-            ? Array.from(new Set(raw.affectedNarratives.filter((n: any) => typeof n === 'string' && n.trim().length > 0).map((n: string) => n.trim())))
+            ? Array.from(new Set<string>(raw.affectedNarratives.filter((n: any) => typeof n === 'string' && n.trim().length > 0).map((n: string) => n.trim())))
             : [];
 
         const category = typeof raw.category === 'string' && raw.category ? raw.category.trim() : groundTruth.primaryItem.category;

@@ -1,4 +1,5 @@
 import logger from '@/utils/logger';
+
 import type { CryptoDigestService } from './crypto-digest.service';
 
 export class CryptoDigestScheduler {
@@ -15,23 +16,48 @@ export class CryptoDigestScheduler {
     }
 
     /**
-     * Computes the next occurrence of 05:00, 11:00, or 17:00 in the given timezone (Asia/Ho_Chi_Minh)
+     * Creates a UTC Date representing a specific year, month, day, hour, minute in the given timezone.
+     * Uses native UTC arithmetic so days roll over safely (e.g. day 30+1 -> 1st of next month)
+     * without producing invalid dates or string parsing NaN.
      */
-    static getNextScheduledRun(now: Date, timezone = 'Asia/Ho_Chi_Minh'): Date {
+    static createDateInTimezone(year: number, month: number, day: number, hour: number, minute: number, timezone = 'Asia/Ho_Chi_Minh'): Date {
+        const guessUtc = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+        try {
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: timezone,
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                second: 'numeric',
+                hour12: false,
+            });
+            const parts = formatter.formatToParts(guessUtc);
+            const getVal = (t: string) => Number.parseInt(parts.find((p) => p.type === t)?.value || '0', 10);
+            const targetInTz = new Date(Date.UTC(getVal('year'), getVal('month') - 1, getVal('day'), getVal('hour'), getVal('minute'), getVal('second')));
+            const diffMs = guessUtc.getTime() - targetInTz.getTime();
+            return new Date(guessUtc.getTime() + diffMs);
+        } catch {
+            return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, 0));
+        }
+    }
+
+    /**
+     * Computes the next occurrence of a scheduled slot in the given timezone.
+     * Accepts optional customSlots (in minutes of day, e.g. [300, 660, 1020]).
+     */
+    static getNextScheduledRun(now: Date, timezone = 'Asia/Ho_Chi_Minh', customSlots?: number[]): Date {
         const parts = CryptoDigestScheduler.getVietnamTimeParts(now, timezone);
         const currentTotalMinutes = parts.hour * 60 + parts.minute;
 
-        const targetSlots = [
-            5 * 60, // 05:00
-            11 * 60, // 11:00
-            17 * 60, // 17:00
-        ];
+        const targetSlots = customSlots && customSlots.length > 0 ? [...customSlots].sort((a, b) => a - b) : [5 * 60, 11 * 60, 17 * 60];
 
         let targetMinuteOfDay = targetSlots.find((slot) => slot > currentTotalMinutes);
         let daysToAdd = 0;
 
         if (targetMinuteOfDay === undefined) {
-            // All slots for today passed, target 05:00 tomorrow
+            // All slots for today passed, target first slot tomorrow
             targetMinuteOfDay = targetSlots[0];
             daysToAdd = 1;
         }
@@ -39,27 +65,36 @@ export class CryptoDigestScheduler {
         const targetHour = Math.floor(targetMinuteOfDay / 60);
         const targetMin = targetMinuteOfDay % 60;
 
-        // Build target Date in timezone
-        const nextDate = new Date(now);
-        nextDate.setUTCDate(nextDate.getUTCDate() + daysToAdd);
+        return CryptoDigestScheduler.createDateInTimezone(parts.year, parts.month, parts.day + daysToAdd, targetHour, targetMin, timezone);
+    }
 
-        // Approximate conversion matching target slot in Vietnam (+07:00)
-        // Format ISO with offset +07:00
-        const y = parts.year;
-        const m = String(parts.month).padStart(2, '0');
-        const d = String(parts.day + daysToAdd).padStart(2, '0');
-        const h = String(targetHour).padStart(2, '0');
-        const min = String(targetMin).padStart(2, '0');
+    /**
+     * Determines the initial target run on startup.
+     * Checks if the most recent scheduled slot occurred within graceMinutes (default 60m)
+     * and should be triggered as a catch-up run.
+     */
+    determineInitialRunTarget(now: Date, timezone = 'Asia/Ho_Chi_Minh', slots: number[], graceMinutes = 60): Date {
+        const parts = CryptoDigestScheduler.getVietnamTimeParts(now, timezone);
+        const currentTotalMinutes = parts.hour * 60 + parts.minute;
 
-        const isoString = `${y}-${m}-${d}T${h}:${min}:00+07:00`;
-        const parsed = new Date(isoString);
-        return Number.isNaN(parsed.getTime()) ? new Date(now.getTime() + 6 * 60 * 60 * 1000) : parsed;
+        // Check if there is a slot that passed recently (within graceMinutes)
+        const recentPassedSlot = [...slots].reverse().find((slot) => currentTotalMinutes >= slot && currentTotalMinutes - slot <= graceMinutes);
+
+        if (recentPassedSlot !== undefined) {
+            // Trigger immediately to catch up the missed slot
+            return now;
+        }
+
+        return CryptoDigestScheduler.getNextScheduledRun(now, timezone, slots);
     }
 
     /**
      * Extracts date/time parts in the configured timezone
      */
-    static getVietnamTimeParts(date: Date, timezone = 'Asia/Ho_Chi_Minh'): {
+    static getVietnamTimeParts(
+        date: Date,
+        timezone = 'Asia/Ho_Chi_Minh'
+    ): {
         year: number;
         month: number;
         day: number;
@@ -102,12 +137,7 @@ export class CryptoDigestScheduler {
      * - 17:00 digest: news from 11:00
      * If last successful delivery exists and is within fallbackLookbackHours, prioritizes it.
      */
-    static computeWindowFrom(
-        now: Date,
-        timezone = 'Asia/Ho_Chi_Minh',
-        fallbackHours = 12,
-        lastDeliveredAt?: Date
-    ): Date {
+    static computeWindowFrom(now: Date, timezone = 'Asia/Ho_Chi_Minh', fallbackHours = 12, lastDeliveredAt?: Date): Date {
         if (lastDeliveredAt) {
             const ageMs = now.getTime() - lastDeliveredAt.getTime();
             if (ageMs > 0 && ageMs <= fallbackHours * 60 * 60 * 1000) {
@@ -146,10 +176,17 @@ export class CryptoDigestScheduler {
         }
 
         this.isRunning = true;
-        this.nextRunAt = CryptoDigestScheduler.getNextScheduledRun(new Date(), config.timezone);
-        logger.info(
-            `[crypto-digest.scheduler] Started CryptoDigestScheduler (05:00, 11:00, 17:00 ${config.timezone}). Next target run at: ${this.nextRunAt.toISOString()}`
-        );
+        const slots = this.digestService.configService.getScheduleSlots();
+        const slotNames = this.digestService.configService.getScheduleSlotNames();
+        const now = new Date();
+
+        this.nextRunAt = this.determineInitialRunTarget(now, config.timezone, slots);
+        logger.info(`[crypto-digest.scheduler] Started CryptoDigestScheduler (${slotNames.join(', ')} ${config.timezone}). Next target run at: ${this.nextRunAt.toISOString()}`);
+
+        // Run immediate check in case catch-up is due
+        this.checkSchedule().catch((err) => {
+            logger.error(`[crypto-digest.scheduler.error] ${err.message}`);
+        });
 
         // Check every 30 seconds for target slot
         this.intervalId = setInterval(() => {
@@ -170,24 +207,28 @@ export class CryptoDigestScheduler {
     }
 
     /**
-     * Checks if current time in Asia/Ho_Chi_Minh has hit 05:00, 11:00, or 17:00
+     * Checks if current time has reached or passed the scheduled nextRunAt target
      */
-    private async checkSchedule(): Promise<void> {
-        const config = this.digestService.configService.getConfig();
+    async checkSchedule(): Promise<void> {
+        if (!this.isRunning || !this.nextRunAt || this.isExecuting) {
+            return;
+        }
+
         const now = new Date();
-        const parts = CryptoDigestScheduler.getVietnamTimeParts(now, config.timezone);
+        if (now.getTime() >= this.nextRunAt.getTime()) {
+            const config = this.digestService.configService.getConfig();
+            const parts = CryptoDigestScheduler.getVietnamTimeParts(now, config.timezone);
+            const slotKey = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}`;
 
-        const isTargetSlot =
-            (parts.hour === 5 && parts.minute === 0) ||
-            (parts.hour === 11 && parts.minute === 0) ||
-            (parts.hour === 17 && parts.minute === 0);
-
-        const slotKey = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}`;
-
-        if (isTargetSlot && this.lastTriggeredSlot !== slotKey) {
-            this.lastTriggeredSlot = slotKey;
-            logger.info(`[crypto-digest.scheduler] Scheduled slot triggered: ${parts.hour}:00 in ${config.timezone}`);
-            await this.tick();
+            if (this.lastTriggeredSlot !== slotKey) {
+                this.lastTriggeredSlot = slotKey;
+                logger.info(`[crypto-digest.scheduler] Scheduled slot triggered at ${now.toISOString()} (target was: ${this.nextRunAt.toISOString()}) in ${config.timezone}`);
+                await this.tick();
+            } else {
+                // Already triggered for this slot, advance nextRunAt to next scheduled slot
+                const slots = this.digestService.configService.getScheduleSlots();
+                this.nextRunAt = CryptoDigestScheduler.getNextScheduledRun(now, config.timezone, slots);
+            }
         }
     }
 
@@ -198,6 +239,7 @@ export class CryptoDigestScheduler {
         }
 
         const config = this.digestService.configService.getConfig();
+        const slots = this.digestService.configService.getScheduleSlots();
         this.isExecuting = true;
         this.lastRunAt = new Date();
 
@@ -208,17 +250,19 @@ export class CryptoDigestScheduler {
             logger.error(`[crypto-digest.scheduler.failed] ${error.message}`);
         } finally {
             this.isExecuting = false;
-            this.nextRunAt = CryptoDigestScheduler.getNextScheduledRun(new Date(), config.timezone);
+            this.nextRunAt = CryptoDigestScheduler.getNextScheduledRun(new Date(), config.timezone, slots);
+            logger.info(`[crypto-digest.scheduler] Next scheduled run updated to: ${this.nextRunAt.toISOString()}`);
         }
     }
 
     getStatus() {
         const config = this.digestService.configService.getConfig();
+        const slotNames = this.digestService.configService.getScheduleSlotNames();
         return {
             isRunning: this.isRunning,
             isExecuting: this.isExecuting,
             timezone: config.timezone,
-            scheduleSlots: ['05:00', '11:00', '17:00'],
+            scheduleSlots: slotNames,
             lastRunAt: this.lastRunAt,
             nextRunAt: this.nextRunAt,
         };

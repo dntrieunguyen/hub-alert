@@ -1,29 +1,21 @@
 import logger from '@/utils/logger';
-import type { IFeedRepository } from '../storage/feed-repository.interface';
+
+import type { AiNewsAnalyzer } from '../intelligence/ai-news-analyzer.interface';
 import { MarketEventService } from '../notifications/events/market-event.service';
 import type { GoogleChatNotificationService } from '../notifications/google-chat/google-chat-notification.service';
 import { MarketEventType } from '../notifications/types';
+import type { IFeedRepository } from '../storage/feed-repository.interface';
 import type { TokenTrendService } from '../trends/token-trend.service';
 import { CryptoDigestConfigService } from './crypto-digest-config.service';
 import { CryptoDigestFormatterService } from './crypto-digest-formatter.service';
 import { CryptoDigestRankingService } from './crypto-digest-ranking.service';
+import { isCryptoMarketRelevant, isValidTitle } from './crypto-digest-relevance.service';
 import { CryptoDigestScheduler } from './crypto-digest-scheduler';
 import { CryptoDigestSelectionService } from './crypto-digest-selection.service';
 import { CryptoDigestSummaryService } from './crypto-digest-summary.service';
-import { InMemoryDigestDeliveryRepository } from './storage/in-memory-digest-delivery.repository';
-import type { AiNewsAnalyzer } from '../intelligence/ai-news-analyzer.interface';
-import {
-    type AggregatedMarketEvent,
-    type DigestConfig,
-    DigestDeliveryStatus,
-    type DigestPayload,
-    type DigestTrendingToken,
-    type MarketIntelligenceAnalysis,
-    type MarketSnapshotSection,
-} from './types';
-
-import { isCryptoMarketRelevant, isValidTitle } from './crypto-digest-relevance.service';
 import { detectGenericFiller, validateVietnameseOutput } from './crypto-digest-vietnamese-validator';
+import { InMemoryDigestDeliveryRepository } from './storage/in-memory-digest-delivery.repository';
+import { type AggregatedMarketEvent, type DigestConfig, DigestDeliveryStatus, type DigestPayload, type DigestTrendingToken, type MarketIntelligenceAnalysis, type MarketSnapshotSection } from './types';
 
 export class CryptoDigestService {
     readonly configService: CryptoDigestConfigService;
@@ -101,23 +93,18 @@ export class CryptoDigestService {
 
         const windowTo = new Date();
         const latestDelivery = await this.deliveryRepository.getLatestSuccessfulDelivery();
-        const windowFrom = CryptoDigestScheduler.computeWindowFrom(
-            windowTo,
-            config.timezone,
-            config.fallbackLookbackHours,
-            latestDelivery?.sentAt
-        );
+        const windowFrom = CryptoDigestScheduler.computeWindowFrom(windowTo, config.timezone, config.fallbackLookbackHours, latestDelivery?.sentAt);
         const periodHours = Math.max(1, Math.round((windowTo.getTime() - windowFrom.getTime()) / (1000 * 60 * 60)));
 
         // Compute Slot Key for Idempotency Locking (Section 16: digest:{date}:{slot})
         const timeParts = CryptoDigestScheduler.getVietnamTimeParts(windowTo, config.timezone);
-        const slotHour = timeParts.hour;
-        let slotName = '17:00';
-        if (slotHour >= 5 && slotHour < 11) {
-            slotName = '05:00';
-        } else if (slotHour >= 11 && slotHour < 17) {
-            slotName = '11:00';
-        }
+        const totalMins = timeParts.hour * 60 + timeParts.minute;
+        const slots = this.configService.getScheduleSlots();
+        const passedSlots = slots.filter((s) => s <= totalMins);
+        const activeSlotMins = passedSlots.length > 0 ? passedSlots[passedSlots.length - 1] : slots[slots.length - 1];
+        const slotHourVal = Math.floor(activeSlotMins / 60);
+        const slotMinVal = activeSlotMins % 60;
+        const slotName = `${String(slotHourVal).padStart(2, '0')}:${String(slotMinVal).padStart(2, '0')}`;
         const dateStr = `${timeParts.year}-${String(timeParts.month).padStart(2, '0')}-${String(timeParts.day).padStart(2, '0')}`;
         const slotKey = `digest:${dateStr}:${slotName}`;
 
@@ -135,9 +122,7 @@ export class CryptoDigestService {
             }
         }
 
-        logger.info(
-            `[crypto-digest.started] Building digest for lookback window ${windowFrom.toISOString()} -> ${windowTo.toISOString()} (${periodHours}h in ${config.timezone}, slot: ${slotKey})`
-        );
+        logger.info(`[crypto-digest.started] Building digest for lookback window ${windowFrom.toISOString()} -> ${windowTo.toISOString()} (${periodHours}h in ${config.timezone}, slot: ${slotKey})`);
 
         // 1. Query candidate items from repository up to maxScanItems for candidate replenishment
         const maxScan = config.maxScanItems || 300;
@@ -155,12 +140,7 @@ export class CryptoDigestService {
         const deliveredFingerprints = await this.deliveryRepository.getDeliveredFingerprints();
 
         // 4. Run selection pipeline (Pre-filter, Deduplicate, Replenish candidates, AI analysis, Diversity, Limit <= 10)
-        const topItems = await this.selectionService.selectDigestEvents(
-            marketEvents,
-            config,
-            deliveredFingerprints,
-            this.aiAnalyzer
-        );
+        const topItems = await this.selectionService.selectDigestEvents(marketEvents, config, deliveredFingerprints, this.aiAnalyzer);
 
         // 5. Check if quality threshold met
         if (topItems.length === 0) {
@@ -395,12 +375,7 @@ export class CryptoDigestService {
         const ethItems = items.filter((i) => i.tokens.includes('ETH'));
         const solItems = items.filter((i) => i.tokens.includes('SOL'));
         const memeItems = items.filter((i) => i.category === 'MEMECOIN' || i.eventType === MarketEventType.MEME_TREND);
-        const macroItems = items.filter(
-            (i) =>
-                i.eventType === MarketEventType.CENTRAL_BANK_DECISION ||
-                i.eventType === MarketEventType.MACRO_DATA ||
-                i.eventType === MarketEventType.REGULATION
-        );
+        const macroItems = items.filter((i) => i.eventType === MarketEventType.CENTRAL_BANK_DECISION || i.eventType === MarketEventType.MACRO_DATA || i.eventType === MarketEventType.REGULATION);
 
         if (!btcItems.length && !ethItems.length && !solItems.length && !memeItems.length && !macroItems.length) {
             return undefined;
@@ -454,11 +429,7 @@ export class CryptoDigestService {
      */
     private buildMacroHighlights(items: AggregatedMarketEvent[]): string[] | undefined {
         const macroItems = items.filter(
-            (i) =>
-                i.eventType === MarketEventType.CENTRAL_BANK_DECISION ||
-                i.eventType === MarketEventType.MACRO_DATA ||
-                i.eventType === MarketEventType.REGULATION ||
-                i.eventType === MarketEventType.GOVERNMENT_POLICY
+            (i) => i.eventType === MarketEventType.CENTRAL_BANK_DECISION || i.eventType === MarketEventType.MACRO_DATA || i.eventType === MarketEventType.REGULATION || i.eventType === MarketEventType.GOVERNMENT_POLICY
         );
 
         if (macroItems.length === 0) {

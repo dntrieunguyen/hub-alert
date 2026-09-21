@@ -1,4 +1,5 @@
 import logger from '@/utils/logger';
+
 import type { DigestConfig, DigestRankingWeights } from './types';
 
 export class CryptoDigestConfigService {
@@ -44,7 +45,7 @@ export class CryptoDigestConfigService {
             recency: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_RECENCY, 0.05),
             crossSource: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_CROSS_SOURCE, 0.05),
             marketRelevance: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_RELEVANCE, 0.15),
-            aiInformationValue: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_INFO, aiEnabled ? 0.20 : 0),
+            aiInformationValue: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_INFO, aiEnabled ? 0.2 : 0),
             aiMarketRelevance: this.parseFloatValue(env.CRYPTO_DIGEST_WEIGHT_AI_RELEVANCE, aiEnabled ? 0.15 : 0),
         };
 
@@ -108,9 +109,7 @@ export class CryptoDigestConfigService {
         logger.info(
             `[crypto-digest.config] Digest enabled: ${this.config.enabled} (Interval: ${this.config.intervalMinutes}m, Lookback: ${this.config.lookbackHours}h, MaxItems: ${this.config.maxItems}, MinRanking: ${this.config.minRankingScore})`
         );
-        logger.info(
-            `[crypto-digest.config] Critical Alerts enabled: ${this.config.criticalAlertEnabled} (Threshold: >= ${this.config.criticalAlertThreshold})`
-        );
+        logger.info(`[crypto-digest.config] Critical Alerts enabled: ${this.config.criticalAlertEnabled} (Threshold: >= ${this.config.criticalAlertThreshold})`);
     }
 
     getConfig(): Readonly<DigestConfig> {
@@ -127,5 +126,61 @@ export class CryptoDigestConfigService {
 
     getCriticalAlertThreshold(): number {
         return this.config.criticalAlertThreshold;
+    }
+
+    /**
+     * Parses a cron expression like '0 5 * * *' into minute-of-day (e.g. 5 * 60 + 0 = 300)
+     */
+    parseCronSlot(cronStr: string | undefined): number | null {
+        if (!cronStr || typeof cronStr !== 'string') {
+            return null;
+        }
+        const parts = cronStr.trim().split(/\s+/);
+        if (parts.length < 2) {
+            return null;
+        }
+        const minute = Number.parseInt(parts[0], 10);
+        const hour = Number.parseInt(parts[1], 10);
+        if (Number.isNaN(minute) || Number.isNaN(hour) || minute < 0 || minute > 59 || hour < 0 || hour > 23) {
+            return null;
+        }
+        return hour * 60 + minute;
+    }
+
+    /**
+     * Returns scheduled slot times as minutes of day (e.g. [300, 660, 1020] for 05:00, 11:00, 17:00)
+     */
+    getScheduleSlots(): number[] {
+        const slots: number[] = [];
+        const morning = this.parseCronSlot(this.config.morningCron);
+        const noon = this.parseCronSlot(this.config.noonCron);
+        const evening = this.parseCronSlot(this.config.eveningCron);
+
+        if (morning !== null) {
+            slots.push(morning);
+        }
+        if (noon !== null) {
+            slots.push(noon);
+        }
+        if (evening !== null) {
+            slots.push(evening);
+        }
+
+        if (slots.length === 0) {
+            return [5 * 60, 11 * 60, 17 * 60];
+        }
+
+        return Array.from(new Set(slots)).sort((a, b) => a - b);
+    }
+
+    /**
+     * Returns human readable slot names (e.g. ['05:00', '11:00', '17:00'])
+     */
+    getScheduleSlotNames(): string[] {
+        return this.getScheduleSlots().map((mins) => {
+            const h = String(Math.floor(mins / 60)).padStart(2, '0');
+            const m = String(mins % 60).padStart(2, '0');
+            return `${h}:${m}`;
+        });
     }
 }

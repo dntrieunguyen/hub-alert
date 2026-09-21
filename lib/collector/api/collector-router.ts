@@ -5,6 +5,7 @@ import type { CryptoDigestScheduler, CryptoDigestService } from '../digest';
 import type { AiNewsAnalyzer } from '../intelligence/ai-news-analyzer.interface';
 import type { HotNewsService } from '../intelligence/hot-news/hot-news.service';
 import { LatestMarketIntelligenceService } from '../intelligence/latest/latest-market-intelligence.service';
+import type { LatestMarketIntelligenceResponse } from '../intelligence/types';
 import type { NotificationModule } from '../notifications/notification.module';
 import type { FeedSchedulerService } from '../scheduler/feed-scheduler.service';
 import type { FeedSourceService } from '../sources/feed-source.service';

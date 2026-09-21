@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+
 import { CryptoDigestConfigService } from '../../../lib/collector/digest/crypto-digest-config.service';
 import { CryptoDigestRankingService } from '../../../lib/collector/digest/crypto-digest-ranking.service';
 import { CryptoDigestScheduler } from '../../../lib/collector/digest/crypto-digest-scheduler';
@@ -83,6 +84,81 @@ describe('CryptoDigestScheduler: 05:00 / 11:00 / 17:00 Schedule & Windows', () =
         const windowWithLastRun = CryptoDigestScheduler.computeWindowFrom(at1100, tz, 12, lastRun);
         expect(windowWithLastRun.getTime()).toBe(lastRun.getTime());
     });
+
+    it('should safely handle month rollover without NaN or invalid dates', () => {
+        const tz = 'Asia/Ho_Chi_Minh';
+        // At 18:00 on Sept 30 (last day of Sept), next target is Oct 1 at 05:00
+        const endOfMonth = new Date('2026-09-30T18:00:00+07:00');
+        const nextTarget = CryptoDigestScheduler.getNextScheduledRun(endOfMonth, tz);
+        expect(Number.isNaN(nextTarget.getTime())).toBe(false);
+        const parts = CryptoDigestScheduler.getVietnamTimeParts(nextTarget, tz);
+        expect(parts.month).toBe(10);
+        expect(parts.day).toBe(1);
+        expect(parts.hour).toBe(5);
+    });
+
+    it('should extract dynamic schedule slots from cron expressions in CryptoDigestConfigService', () => {
+        const configService = new CryptoDigestConfigService({
+            CRYPTO_DIGEST_MORNING_CRON: '0 8 * * *',
+            CRYPTO_DIGEST_NOON_CRON: '30 13 * * *',
+            CRYPTO_DIGEST_EVENING_CRON: '0 20 * * *',
+        });
+        const slots = configService.getScheduleSlots();
+        expect(slots).toEqual([8 * 60, 13 * 60 + 30, 20 * 60]);
+        const slotNames = configService.getScheduleSlotNames();
+        expect(slotNames).toEqual(['08:00', '13:30', '20:00']);
+
+        // Next run should respect custom slots
+        const at0700 = new Date('2026-09-20T07:00:00+07:00');
+        const next = CryptoDigestScheduler.getNextScheduledRun(at0700, 'Asia/Ho_Chi_Minh', slots);
+        const parts = CryptoDigestScheduler.getVietnamTimeParts(next, 'Asia/Ho_Chi_Minh');
+        expect(parts.hour).toBe(8);
+        expect(parts.minute).toBe(0);
+    });
+
+    it('should trigger digest when now >= nextRunAt even if minutes != 0', async () => {
+        const mockDigestService = {
+            configService: new CryptoDigestConfigService({
+                CRYPTO_DIGEST_ENABLED: 'true',
+            }),
+            generateAndSendDigest: vi.fn().mockResolvedValue({ success: true, itemCount: 5 }),
+        } as any;
+
+        const scheduler = new CryptoDigestScheduler(mockDigestService);
+        // Set nextRunAt in the past (e.g. 5 minutes ago)
+        const past = new Date(Date.now() - 5 * 60 * 1000);
+        (scheduler as any).isRunning = true;
+        (scheduler as any).nextRunAt = past;
+
+        await scheduler.checkSchedule();
+
+        expect(mockDigestService.generateAndSendDigest).toHaveBeenCalledTimes(1);
+        // After tick, nextRunAt is in the future
+        expect((scheduler as any).nextRunAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('should catch up recent slot on startup within grace period', () => {
+        const mockDigestService = {
+            configService: new CryptoDigestConfigService({
+                CRYPTO_DIGEST_ENABLED: 'true',
+            }),
+        } as any;
+
+        const scheduler = new CryptoDigestScheduler(mockDigestService);
+        // Suppose it is 11:15 in Vietnam (slot was 11:00, 15 minutes ago)
+        const at1115 = new Date('2026-09-20T11:15:00+07:00');
+        const slots = [5 * 60, 11 * 60, 17 * 60];
+        const initialTarget = scheduler.determineInitialRunTarget(at1115, 'Asia/Ho_Chi_Minh', slots, 60);
+
+        // Since it is within 60m grace period, initialTarget should be now (trigger immediately)
+        expect(initialTarget.getTime()).toBe(at1115.getTime());
+
+        // If it is 12:30 (outside 60m grace period of 11:00), target should be next slot (17:00)
+        const at1230 = new Date('2026-09-20T12:30:00+07:00');
+        const nextTarget = scheduler.determineInitialRunTarget(at1230, 'Asia/Ho_Chi_Minh', slots, 60);
+        const parts = CryptoDigestScheduler.getVietnamTimeParts(nextTarget, 'Asia/Ho_Chi_Minh');
+        expect(parts.hour).toBe(17);
+    });
 });
 
 describe('CryptoDigestRankingService: Combined AI Scoring', () => {
@@ -110,14 +186,14 @@ describe('CryptoDigestRankingService: Combined AI Scoring', () => {
         };
 
         const weights = {
-            credibility: 0.20,
-            impact: 0.20,
+            credibility: 0.2,
+            impact: 0.2,
             verification: 0.15,
-            recency: 0.10,
-            crossSource: 0.10,
+            recency: 0.1,
+            crossSource: 0.1,
             marketRelevance: 0.05,
             aiInformationValue: 0.15,
-            aiMarketRelevance: 0.10,
+            aiMarketRelevance: 0.1,
         };
 
         const breakdown = rankingService.calculateRankingScore(itemWithAi, 6, weights);
@@ -147,14 +223,14 @@ describe('CryptoDigestRankingService: Combined AI Scoring', () => {
         };
 
         const weights = {
-            credibility: 0.20,
-            impact: 0.20,
+            credibility: 0.2,
+            impact: 0.2,
             verification: 0.15,
-            recency: 0.10,
-            crossSource: 0.10,
+            recency: 0.1,
+            crossSource: 0.1,
             marketRelevance: 0.05,
             aiInformationValue: 0.15,
-            aiMarketRelevance: 0.10,
+            aiMarketRelevance: 0.1,
         };
 
         const breakdown = rankingService.calculateRankingScore(itemWithoutAi, 6, weights);

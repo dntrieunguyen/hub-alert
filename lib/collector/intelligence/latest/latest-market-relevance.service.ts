@@ -10,6 +10,7 @@ export interface MarketRelevanceTarget {
     tokens?: string[];
     symbols?: string[];
     topics?: string[];
+    entities?: string[];
     engagement?: {
         likes?: number;
         comments?: number;
