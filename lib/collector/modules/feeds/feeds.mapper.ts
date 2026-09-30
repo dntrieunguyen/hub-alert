@@ -1,0 +1,30 @@
+import type { CryptoFeedItem } from '../../types';
+
+export const formatFeedItem = (item: CryptoFeedItem) => ({
+    id: item.id,
+    externalId: item.externalId,
+    title: item.title,
+    summary: item.summary,
+    url: item.url,
+    author: item.author,
+    source: {
+        id: item.sourceId,
+        name: item.sourceName,
+        tier: item.sourceTier,
+        credibilityScore: item.credibilityScore,
+    },
+    category: item.category,
+    tokens: item.tokens,
+    symbols: item.symbols,
+    chains: item.chains,
+    topics: item.topics,
+    publishedAt: item.publishedAt.toISOString(),
+    collectedAt: item.collectedAt.toISOString(),
+    breaking: item.breaking,
+    impactScore: item.impactScore,
+    platform: item.platform,
+    handle: item.handle,
+    xSourceType: item.xSourceType,
+    xMetadata: item.xMetadata,
+    metadata: item.metadata,
+});
